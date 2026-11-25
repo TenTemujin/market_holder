@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="180" viewBox="0 0 720 180" role="img" aria-label="Market Holder">
+  <rect width="720" height="180" rx="20" fill="#000"/>
+  <rect x="1.5" y="1.5" width="717" height="177" rx="19" fill="none" stroke="#5a3a10" stroke-width="3"/>
+  <g transform="translate(30 24)">
+    <rect width="132" height="132" rx="18" fill="#0b0b0b" stroke="#ffa028" stroke-width="3"/>
+    <g stroke-width="4" stroke-linecap="round">
+      <line x1="34" y1="30" x2="34" y2="104" stroke="#00d26a"/>
+      <rect x="25" y="52" width="18" height="38" rx="2" fill="#00d26a" stroke="none"/>
+      <line x1="66" y1="22" x2="66" y2="88" stroke="#ff3b3b"/>
+      <rect x="57" y="34" width="18" height="40" rx="2" fill="#ff3b3b" stroke="none"/>
+      <line x1="98" y1="16" x2="98" y2="80" stroke="#00d26a"/>
+      <rect x="89" y="26" width="18" height="38" rx="2" fill="#00d26a" stroke="none"/>
+    </g>
+    <polyline points="12,100 40,84 66,92 120,38" fill="none" stroke="#ffa028" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="120" cy="38" r="6" fill="#ffd400"/>
+  </g>
+  <text x="196" y="94" font-family="Consolas, 'Courier New', monospace" font-size="52" font-weight="700" fill="#ffa028" letter-spacing="2">MARKET HOLDER</text>
+  <text x="198" y="130" font-family="Consolas, 'Courier New', monospace" font-size="19" fill="#8a8a8a" letter-spacing="1">multi-asset market simulator · terminal-style UI</text>
+</svg>

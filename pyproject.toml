@@ -1,0 +1,29 @@
+[project]
+name = "market-holder"
+version = "0.0.1"
+description = "Simulador de mercado multi-ativo com interface estilo terminal"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "httpx"]
+api = ["fastapi", "uvicorn", "websockets"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = ["live: acessa a rede (rode com --live)"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
