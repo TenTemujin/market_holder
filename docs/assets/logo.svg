@@ -1,57 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="156" viewBox="0 0 760 156" role="img" aria-label="Market Holder Terminal">
-  <rect width="760" height="156" fill="#050505"/>
-  <!-- Outer precision terminal frame -->
-  <rect x="1" y="1" width="758" height="154" fill="none" stroke="#3a250a" stroke-width="2"/>
-  <rect x="5" y="5" width="750" height="22" fill="#140e04"/>
-  <line x1="5" y1="27" x2="755" y2="27" stroke="#5a3a10" stroke-width="1"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="104" viewBox="0 0 820 104" role="img" aria-label="Market Holder">
+  <rect width="820" height="104" fill="#060606"/>
+  <line x1="0" y1="1" x2="820" y2="1" stroke="#ffa028" stroke-width="2"/>
+  <line x1="0" y1="103" x2="820" y2="103" stroke="#222222" stroke-width="1"/>
 
-  <!-- Top command header bar -->
-  <text x="14" y="20" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace" font-size="11" font-weight="700" fill="#ffa028">MH // MULTI-ASSET EXECUTION &amp; REPLAY WORKSTATION</text>
-  <rect x="652" y="8" width="38" height="15" fill="#1fae4b"/>
-  <text x="658" y="19" font-family="'Cascadia Mono', Consolas, monospace" font-size="10" font-weight="700" fill="#000">&lt;GO&gt;</text>
-  <text x="698" y="19" font-family="'Cascadia Mono', Consolas, monospace" font-size="10" fill="#8a8a8a">UTC</text>
-
-  <!-- Left micro-panel: yield curve + order book depth bars -->
-  <g transform="translate(16 38)">
-    <rect width="128" height="102" fill="#0a0a0a" stroke="#2a2a2a" stroke-width="1"/>
-    <line x1="0" y1="26" x2="128" y2="26" stroke="#181818" stroke-width="1"/>
-    <line x1="0" y1="52" x2="128" y2="52" stroke="#181818" stroke-width="1"/>
-    <line x1="0" y1="78" x2="128" y2="78" stroke="#181818" stroke-width="1"/>
-    <line x1="32" y1="0" x2="32" y2="102" stroke="#181818" stroke-width="1"/>
-    <line x1="64" y1="0" x2="64" y2="102" stroke="#181818" stroke-width="1"/>
-    <line x1="96" y1="0" x2="96" y2="102" stroke="#181818" stroke-width="1"/>
-
-    <!-- VPVR / Depth profile on right edge of micro-panel -->
-    <rect x="104" y="12" width="23" height="6" fill="#ff3b3b" fill-opacity="0.35"/>
-    <rect x="92" y="22" width="35" height="6" fill="#ff3b3b" fill-opacity="0.35"/>
-    <rect x="78" y="46" width="49" height="6" fill="#ffa028" fill-opacity="0.55"/>
-    <rect x="96" y="68" width="31" height="6" fill="#00d26a" fill-opacity="0.35"/>
-    <rect x="86" y="80" width="41" height="6" fill="#00d26a" fill-opacity="0.35"/>
-
-    <!-- Candlesticks -->
-    <g stroke-width="1.5">
-      <line x1="18" y1="56" x2="18" y2="88" stroke="#ff3b3b"/>
-      <rect x="14" y="64" width="8" height="16" fill="#ff3b3b"/>
-
-      <line x1="38" y1="42" x2="38" y2="78" stroke="#00d26a"/>
-      <rect x="34" y="48" width="8" height="22" fill="#00d26a"/>
-
-      <line x1="58" y1="36" x2="58" y2="68" stroke="#00d26a"/>
-      <rect x="54" y="42" width="8" height="18" fill="#00d26a"/>
-
-      <line x1="78" y1="44" x2="78" y2="72" stroke="#ff3b3b"/>
-      <rect x="74" y="48" width="8" height="14" fill="#ff3b3b"/>
-
-      <line x1="98" y1="16" x2="98" y2="54" stroke="#00d26a"/>
-      <rect x="94" y="22" width="8" height="26" fill="#00d26a"/>
-    </g>
-
-    <!-- VWAP / Term Structure line -->
-    <polyline points="10,76 38,62 58,52 78,56 112,26" fill="none" stroke="#ffd400" stroke-width="1.8" stroke-dasharray="3,2"/>
+  <!-- Geometric Isometric Monogram Mark -->
+  <g transform="translate(24, 22)">
+    <rect x="0" y="0" width="60" height="60" fill="#0c0c0c" stroke="#33220a" stroke-width="1.5"/>
+    <!-- Vertical Structural Pillars (M / H hybrid) -->
+    <rect x="11" y="14" width="6" height="32" fill="#ffa028"/>
+    <rect x="27" y="20" width="6" height="26" fill="#00d26a"/>
+    <rect x="43" y="10" width="6" height="36" fill="#ffa028"/>
+    <!-- Crossbar & Wick Details -->
+    <rect x="11" y="27" width="38" height="3" fill="#ffd400"/>
+    <line x1="14" y1="8" x2="14" y2="52" stroke="#ffa028" stroke-width="1.5"/>
+    <line x1="30" y1="13" x2="30" y2="50" stroke="#00d26a" stroke-width="1.5"/>
+    <line x1="46" y1="6" x2="46" y2="52" stroke="#ffa028" stroke-width="1.5"/>
   </g>
 
-  <!-- Main typography & telemetry block -->
-  <text x="164" y="82" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace" font-size="44" font-weight="700" fill="#ffa028" letter-spacing="1.5">MARKET HOLDER</text>
-  <text x="166" y="106" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace" font-size="14" fill="#ececec" letter-spacing="0.5">DETERMINISTIC REPLAY &amp; LIVE MULTI-ASSET PAPER TRADING</text>
-  <text x="166" y="128" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace" font-size="11.5" fill="#8a8a8a">EQUITIES · FX · SOVEREIGN RATES · CRYPTO · BLACK-SCHOLES OPTIONS · RISK ENGINE</text>
+  <!-- Primary Institutional Wordmark -->
+  <text x="104" y="54" font-family="'JetBrains Mono', 'Cascadia Mono', Consolas, 'SFMono-Regular', monospace" font-size="34" font-weight="700" fill="#f2f2f2" letter-spacing="3">MARKET HOLDER</text>
+  <rect x="424" y="32" width="66" height="22" fill="#ffa028"/>
+  <text x="433" y="47" font-family="'JetBrains Mono', 'Cascadia Mono', Consolas, monospace" font-size="12" font-weight="700" fill="#000000" letter-spacing="1">ENGINE</text>
+
+  <!-- Technical Subtitle -->
+  <text x="105" y="78" font-family="'JetBrains Mono', 'Cascadia Mono', Consolas, monospace" font-size="12" fill="#8c8c8c" letter-spacing="0.8">MULTI-ASSET MATCHING ENGINE · DETERMINISTIC REPLAY · TERMINAL UI</text>
+
+  <!-- Right-side System Spec Telemetry -->
+  <line x1="636" y1="20" x2="636" y2="84" stroke="#1f1f1f" stroke-width="1"/>
+  <text x="652" y="38" font-family="'JetBrains Mono', 'Cascadia Mono', Consolas, monospace" font-size="10.5" fill="#7a7a7a">ARITHMETIC   <tspan fill="#ececec">DECIMAL-128</tspan></text>
+  <text x="652" y="55" font-family="'JetBrains Mono', 'Cascadia Mono', Consolas, monospace" font-size="10.5" fill="#7a7a7a">PROTOCOL     <tspan fill="#00d26a">FIX 4.2 / WS</tspan></text>
+  <text x="652" y="72" font-family="'JetBrains Mono', 'Cascadia Mono', Consolas, monospace" font-size="10.5" fill="#7a7a7a">LOOKAHEAD    <tspan fill="#ffd400">STRICT ZERO</tspan></text>
 </svg>

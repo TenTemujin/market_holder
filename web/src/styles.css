@@ -1,15 +1,17 @@
 /* Tema escuro denso, inspirado em terminais profissionais: fundo preto, âmbar, mono. */
 :root {
-  --bg: #000;
-  --panel: #0a0a0a;
-  --line: #2a2a2a;
+  --bg: #030303;
+  --panel: #090909;
+  --line: #222222;
   --amber: #ffa028;
   --yellow: #ffd400;
   --dim: #7a7a7a;
-  --up: #2ecc71;
-  --down: #ff4d4d;
-  font-family: "Cascadia Mono", "Consolas", "DejaVu Sans Mono", monospace;
+  --up: #00d26a;
+  --down: #ff3b3b;
+  font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", "SFMono-Regular", "DejaVu Sans Mono", monospace;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
 }
 
 html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(--amber); }
@@ -19,6 +21,10 @@ html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(-
 .cmdbar {
   display: flex; align-items: center; gap: 8px;
   padding: 4px 8px; background: #111; border-bottom: 1px solid var(--line);
+}
+.cmdbar .brand {
+  color: #000; background: var(--amber); font-weight: 800; padding: 1px 6px;
+  letter-spacing: 1px; border: 1px solid var(--yellow); user-select: none;
 }
 .cmdbar .prompt { color: var(--yellow); font-weight: bold; }
 .cmdbar .go { color: var(--bg); background: var(--yellow); padding: 0 6px; font-weight: bold; }

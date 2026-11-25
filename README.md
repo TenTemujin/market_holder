@@ -1,136 +1,148 @@
-<p align="center"><img src="docs/assets/logo.svg" alt="Market Holder" width="720"></p>
-
 <p align="center">
-  <img alt="python" src="https://img.shields.io/badge/python-3.12%2B-ffa028?labelColor=0a0a0a&style=flat-square">
-  <img alt="typescript" src="https://img.shields.io/badge/typescript-react%2019-ffa028?labelColor=0a0a0a&style=flat-square">
-  <img alt="engine" src="https://img.shields.io/badge/engine-decimal%20%C2%B7%20zero%20lookahead-00d26a?labelColor=0a0a0a&style=flat-square">
-  <img alt="tests" src="https://img.shields.io/badge/tests-163%20py%20%C2%B7%2040%20web-00d26a?labelColor=0a0a0a&style=flat-square">
+  <img src="docs/assets/logo.svg" alt="Market Holder Engine" width="100%">
 </p>
 
-**Market Holder** is a self-hosted, multi-asset trading workstation and market replay engine. It pairs an isolated `Decimal` matching and margin engine in Python with a keyboard-driven, command-line financial terminal interface in React.
+<p align="center">
+  <img alt="python" src="https://img.shields.io/badge/python-3.12%2B-111111?style=flat-square&labelColor=0a0a0a&color=ffa028">
+  <img alt="engine" src="https://img.shields.io/badge/arithmetic-decimal--128-111111?style=flat-square&labelColor=0a0a0a&color=ffa028">
+  <img alt="frontend" src="https://img.shields.io/badge/ui-react%2019%20%C2%B7%20typescript-111111?style=flat-square&labelColor=0a0a0a&color=ffa028">
+  <img alt="tests" src="https://img.shields.io/badge/tests-164%20py%20%C2%B7%2036%20web%20passing-111111?style=flat-square&labelColor=0a0a0a&color=00d26a">
+</p>
 
-It is built for practicing discretionary and systematic execution across equities, sovereign yield curves, FX, commodities, crypto, and European options—either replaying historical regimes at up to 10,000x speed or paper-trading live feeds—under strict anti-lookahead rules.
+**Market Holder** is a deterministic multi-asset order matching engine, historical market replay clock, and keyboard-driven terminal workstation.
 
-> **Simulation only.** No real brokerage connection, no real capital at risk. Every quote on screen carries its upstream provider and declared latency, and synthetic data (replay depth, Black-Scholes option chains) is explicitly flagged as simulated.
+Unlike chart-only replay tools that fill orders optimistically at the bar close or rely on IEEE-754 floating-point math, Market Holder isolates a pure `Decimal` execution and margin core (`src/market_holder/engine/`) with strict anti-lookahead invariants, worst-case intrabar OCO resolution, Reg T maintenance margin liquidation, and synthetic European option chains.
 
----
-
-## Core Capabilities
-
-### 1. Multi-Asset Markets & Macro Functions
-- **Market Hours (`REPLAY` panel):** Every quote carries an OPEN/CLOSED flag and the next open or close, computed per exchange in local time with daylight saving (`domain/hours.py`, 40 exchanges, crypto 24/7, FX Sun-Fri, CME futures with the daily break). Replay uses the simulated clock; live uses the real clock and warns when every market in the session is closed. Regular sessions only: holidays, half days, auctions and pre/post-market are not modelled.
-- **146 Ready-Made Global Securities (`MON`) + Global Search:** US, Brazil (B3), Europe (LSE, XETRA, Euronext, SIX), and Asia-Pacific (TSE, HKEX, KRX, NSE, ASX, TWSE) equities, major indices, ETFs, CME futures, FX crosses, and Binance spot crypto.
-- **Sovereign Yield Curve (`CURVE` / F7):** US Treasury constant-maturity term structure (`1M` through `30Y` via FRED) synchronized to the replay timestamp, with live `2s10s`, `3m10s`, and `5s30s` inversion spreads in basis points.
-- **Macro Release Calendar (`ECO` / F8) & FX Cross Matrix (`FX` / F9):** Central bank policy rates and inflation series (BCB Selic, IPCA, PTAX; FRED Fed Funds, CPI, Unemployment) with Actual vs. Prior and 3-period Consensus surprise, plus a 5x5 G10/EM currency cross-rate matrix.
-- **Black-Scholes Option Chain (`OMON`):** Full Call/Put strike ladder synchronized with the underlying's session spot and realized volatility, computing $\Delta$, $\Gamma$, $\Theta$/day, $\mathcal{V}$, implied volatility smile skew, and 1-click multi-leg strategies (Straddle, Bull Call Spread, Strangle) with 100x contract multipliers.
-- **Dynamic Equity Screener (`EQS`):** Scans all session securities on processed bars for `%Chg`, 20-bar Relative Volume (`RVOL`), Wilder's `RSI(14)`, annualized realized volatility, and 20-bar High/Low breakouts.
-
-### 2. Execution Microstructure & Risk Engine
-- **Isolated `Decimal` Matching Engine:** Market, Limit, Stop, and Stop-Limit orders with FIX lifecycle states (`NEW`, `PARTIALLY_FILLED`, `FILLED`, `CANCELED`, `REJECTED`, `EXPIRED`) and `DAY`, `GTC`, `IOC`, and `FOK` time-in-force.
-- **Strict Anti-Lookahead & Worst-Case Intrabar Rules:** Orders submitted at $t$ only match bars with timestamp $\ge t+1$. Gap openings give realistic price improvement on limits and adverse slippage on stops. When both legs of an OCO bracket fit inside the same candle, the stop-loss fills first.
-- **Short Selling, Locate Caps, Borrow Fees & Auto-Liquidation:** Configurable short locate inventory caps, automatic daily stock borrow fee accrual (`rate / 252`) on session rollovers, Reg T initial (50%) and maintenance (25%) margin checks, and automatic forced market liquidation when equity breaches maintenance margin.
-- **Institutional Execution Algos & Risk Sizing (`ORD` / F5):** Native `Iceberg` orders (`display_qty` max fill per bar), parent-child `TWAP` and volume-weighted `VWAP` slicing across bars, OCO Bracket attachments, and 1-click **Size by Risk %** ($\lfloor \text{Equity} \times \text{Risk\%} / |\text{Entry} - \text{Stop}| \rfloor$).
-- **Corporate Actions (`PORT` / F6):** Apply stock splits, reverse splits, and cash dividends per share directly to open positions during a session.
-
-### 3. Quantitative Analytics & Charting (`GP`, `CORR`, `MC`)
-- **Technical Charting & Volume Profile (`GP` / F3):** Candlesticks with forming live ticks, `SMA(20)`, `EMA(9)`, session `VWAP`, `Bollinger Bands(20, 2)`, live `RSI(14)` readout, horizontal **Volume Profile Visible Range (`VPVR`)** with Point of Control (`POC`), persistent S/R and auto-Fibonacci drawings, and click-to-move working orders on the chart.
-- **Cross-Asset Correlation & Beta (`CORR`):** Rolling return Pearson correlation heatmap and benchmark Beta ($\beta$) across all session instruments.
-- **Monte Carlo Risk & Ruin Simulator (`MC`):** Bootstraps closed round-trip trades from the blotter across hundreds of randomized paths to estimate 5th/50th/95th percentile terminal equity, maximum drawdown distribution, and probability of ruin.
-- **Headless 10,000x Fast-Forward (`REPLAY` / F10):** Advance thousands of bars instantly without intermediate UI rendering bottlenecks.
-
-### 4. Terminal Workflow, Workspaces & Blind Training
-- **Command Line & Keyboard First:** Focus the command bar with `/` or `` ` ``. Enter security + function in professional syntax (`PETR4 BZ Equity GP`, `AAPL US Equity OMON`, `BTCUSDT Crypto BOOK`) or switch tabs with `Alt+1..9` and `Alt+←/→`.
-- **Workspace Presets (`WS`):** Switch layouts with a single command: `WS SCALP`, `WS MACRO`, `WS QUANT`, `WS OPTIONS`, or save custom grids with `SAVE <name>` and `LOAD <name>`.
-- **Blind Replay Mode (`REPLAY`):** Randomize security and historical window while masking ticker names (`BLIND-A MYST Asset`) and dates (`DAY-001`) to train pure price-action reading without hindsight bias.
-- **Trade Journal (`JRNL`) & Audio/Visual Alerts (`ALRT`):** Tag trades (`#breakout`, `#vwap`, `#fomo`), track win rate and expectancy per tag, and arm price-crossing alerts with Web Audio synthesizer cues.
+<p align="center">
+  <img src="docs/assets/terminal-preview.svg" alt="Market Holder Multi-Panel Workstation" width="100%">
+</p>
 
 ---
 
-## Quick Start
+## Engineering Guarantees & Execution Invariants
 
-Requirements: **Python 3.12+** and **Node.js 20+**.
+1. **Zero-Lookahead Clock (`ReplayClock` & `LiveClock`):**
+   - An order submitted at timestamp $t_{\text{order}}$ is eligible only for bars/ticks where $t_{\text{event}} \ge t_{\text{order}}$. Submitting an order while viewing a closed candle at $t_0$ can only match starting at $t_1$.
+   - Macro panels (`CURVE`, `ECO`, `FX`) and quantitative scanners (`EQS`, `CORR`) truncate all upstream series at `session.clock.now`. Future bars are held inside `ReplayClock` and are never exposed by `GET /api/session/bars`.
+2. **Intrabar Matching & Worst-Case OCO Priority (`engine/execution.py`):**
+   - **Gap Openings:** A `LIMIT` order that gaps past its limit price fills at the bar's `open` (price improvement). A `STOP` order that gaps past its trigger fills at the `open` (adverse slippage). A `STOP_LIMIT` that gaps past its limit triggers but rests unfilled until price trades back within the limit on a subsequent bar.
+   - **Pessimistic OCO Resolution:** When both the stop-loss and take-profit legs of an OCO/Bracket group fall within the `[low, high]` range of the same OHLC bar, the **stop-loss is evaluated and filled first** (`engine.py:139`).
+   - **Volume Participation & Slippage:** Fills are clamped to `[bar.low, bar.high]`, quantized to `Instrument.tick_size` in the adverse direction, and capped per bar by `ExecutionModel.max_participation * bar.volume` and `Order.display_qty` (Iceberg).
+3. **Multi-Currency Reg T Margin, Short Locate & Forced Liquidation (`engine/account.py`):**
+   - Cash balances and realized P&L are tracked in each instrument's native currency and marked to the account's `base_currency` for portfolio equity and gross exposure.
+   - Pre-trade checks enforce `lot_size`, `tick_size`, initial margin (`50%` gross exposure), and `locate_limit` on short sales. Orders that strictly reduce existing exposure bypass initial margin checks.
+   - Daily stock borrow fees ($\text{Notional} \times r_{\text{borrow}} / 252$) are debited automatically on UTC session rollovers. When `equity < maintenance_required` (`25%` gross exposure) and `auto_liquidate=True`, the engine cancels working orders and liquidates open positions at market from largest to smallest exposure.
 
-After the one-time install below, start everything with a single command (Windows: `dev.cmd`; Linux/macOS: `./dev.sh`; any OS: `python scripts/dev.py`). It starts the API, waits for `/api/health` to answer JSON, starts the web server, checks that the API is also reachable through the web proxy, and only then opens the browser. Ctrl+C stops both; logs go to `.run/`. It aborts with a clear message if port 8000 or 5173 is already taken.
+---
 
-Manual setup and start:
+## System Architecture
+
+The simulation engine has **zero imports** from the web framework or external data providers:
+
+```
+┌───────────────────────────────────────────────────────────────────────────┐
+│ Providers (Binance, BCB SGS/PTAX, FRED, Tesouro Direto, Yahoo Finance)    │
+│   └─► Gap-Aware SQLite BarCache (data/cache.sqlite)                       │
+└───────────────────────────────┬───────────────────────────────────────────┘
+                                │ Bar / Tick events
+                                ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│ Clock Layer (ReplayClock: deterministic heap │ LiveClock: real-time push) │
+└───────────────────────────────┬───────────────────────────────────────────┘
+                                │ on_bar(Bar) / on_tick(Tick)
+                                ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│ Isolated Simulation Core (src/market_holder/engine/)                      │
+│   ├─► execution.py : OHLC/Tick matching, spread, impact, FeeSchedule      │
+│   ├─► account.py   : Multi-ccy cash, Reg T margin, borrow fee, splits     │
+│   ├─► engine.py    : FIX OrdStatus lifecycle, OCO, Iceberg, liquidation   │
+│   ├─► options.py   : Black-Scholes pricing, Greeks, IV smile & inversion  │
+│   └─► quant.py     : Wilder RSI, RVOL, Pearson correlation, Monte Carlo   │
+└───────────────────────────────┬───────────────────────────────────────────┘
+                                │ Snapshot & Event Stream
+                                ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│ FastAPI Server (/api/* REST + /ws WebSocket) ◄──► React 19 Terminal (web) │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Workstation Functions & Command Line
+
+Press `/` or `` ` `` anywhere to focus the command bar. The parser accepts full terminal syntax (`<TICKER> <EXCH> <SECTOR> <FUNCTION>`), dot notation (`PETR4.B3 GP`), internal IDs (`CRYPTO:BINANCE:BTCUSDT BOOK`), or standalone function codes:
+
+| Code | Key | Function | Scope | Description |
+|:---|:---:|:---|:---:|:---|
+| **`GP`** | `F3` | Price Chart & Technicals | Security | Candlesticks, `SMA20`, `EMA9`, `VWAP`, `BB(20,2)`, `RSI(14)`, Volume Profile (`VPVR` + `POC`), persistent `S/R` & `Fib` drawings, click-to-move orders |
+| **`BOOK`** | `F4` | Order Book & Time/Sales | Security | Live Binance L2 depth (`/depth`) & aggressor tape; tick-derived ladder (flagged `SIMULATED`) in replay |
+| **`ORD`** | `F5` | Execution Ticket | Optional | 1-click Bid/Ask `MKT`, `LIMIT`, `STOP`, `STOP_LIMIT`, `Iceberg`, `TWAP`/`VWAP` slicing, `Bracket OCO`, and **Size by Risk %** calculator |
+| **`OMON`** | — | Option Chain & Greeks | Optional | European Black-Scholes Call/Put chain, $\Delta, \Gamma, \Theta, \mathcal{V}$, volatility skew, and 1-click `Straddle` / `Bull Spread` / `Strangle` execution |
+| **`PORT`** | `F6` | Portfolio & FIX Blotter | Global | Multi-currency cash, open positions, margin telemetry, working/filled orders, algo progress, and Corporate Actions (`SPLIT` / `DIVIDEND`) |
+| **`MON`** | `F2` | Multi-Asset Watchlist | Global | Live & replay quotes across all session instruments with upstream provider name and declared latency |
+| **`EQS`** | — | Equity Screener | Global | Scans session universe by `%Chg`, 20-bar Relative Volume (`RVOL`), `RSI(14)`, annualized realized vol, and 20-bar High/Low breakouts |
+| **`CORR`** | — | Correlation & Beta | Global | Cross-asset return Pearson correlation heatmap and benchmark Beta ($\beta$) |
+| **`MC`** | — | Monte Carlo Simulator | Global | Bootstraps closed blotter trades across $N$ paths to project 5th/50th/95th percentile terminal equity, max drawdown, and probability of ruin |
+| **`CURVE`** | `F7` | Sovereign Yield Curve | Global | US Treasury term structure (`1M`..`30Y` via FRED) synced to replay date with `2s10s`, `3m10s`, and `5s30s` spreads in bps |
+| **`ECO`** | `F8` | Macro Release Calendar | Global | BCB (`SELIC`, `IPCA`, `PTAX`) and FRED (`FEDFUNDS`, `CPI`, `UNRATE`) historical releases with Prior, 3M Consensus, Actual, and Surprise |
+| **`FX`** | `F9` | FX Cross Matrix | Global | 5x5 spot cross-rate matrix (`USD`, `EUR`, `GBP`, `JPY`, `BRL`) and daily variations |
+| **`JRNL`** | — | Trade Journal | Global | Log trade thesis, setup, confidence, and `#tags` with win-rate and net P&L attribution per tag |
+| **`ALRT`** | — | Price Alerts | Global | Arm `ABOVE` / `BELOW` price triggers with Web Audio synthesizer tones and terminal toast notifications |
+| **`REPLAY`**| `F10`| Session & Clock Control | Global | 146-security preset universe, global ticker search, `1x..1000x` playback, **10,000x Headless Fast-Forward**, and **Blind Replay Mode** |
+| **`HP` / `DES`**| — | History / Description | Security | Tabular OHLCV history (`HP`) and contract specifications (`tick_size`, `lot_size`, `multiplier`, feed delay) (`DES`) |
+
+### Workspace & Layout Commands
+- `WS SCALP` · `WS MACRO` · `WS QUANT` · `WS OPTIONS` — Load pre-configured multi-panel desk layouts.
+- `SAVE <name>` · `LOAD <name>` · `LAYOUTS` · `RESET` · `CLOSE` — Manage custom `flexlayout` grids persisted in `localStorage`.
+- `Alt+1..9` / `Alt+←/→` / `Alt+W` — Focus tab by index, cycle tabs, or close the active tab via keyboard.
+
+---
+
+## Installation & Local Setup
+
+Requires **Python 3.12+** and **Node.js 20+**.
 
 ```bash
-# 1. Backend API (port 8000)
+# 1. Install Python package and start FastAPI backend on :8000
 python -m venv .venv
 .venv/Scripts/python -m pip install -e ".[api,dev]"      # Linux/macOS: .venv/bin/python
 .venv/Scripts/python -m uvicorn market_holder.api.app:create_app --factory --port 8000
 
-# 2. Frontend Terminal (port 5173, proxies /api and /ws to :8000)
+# 2. Install frontend dependencies and start Vite dev server (:5173 -> proxies /api & /ws to :8000)
 npm --prefix web install
 npm --prefix web run dev
 ```
 
-Open the local URL printed by Vite, press **F10** (`REPLAY`), pick a basket or click **Start Random Blind Replay**, and press **Create session**.
-
 ---
 
-## Terminal Command Reference
+## Verification & Test Suite
 
-| Mnemonic | Function | Requires Security | Example Command |
-|---|---|:---:|---|
-| `GP` (F3) | Price Chart, Indicators, VPVR & Drawings | Yes | `AAPL US Equity GP` |
-| `BOOK` (F4) | Order Book Ladder & Time and Sales | Yes | `BTCUSDT Crypto BOOK` |
-| `HP` | Historical OHLCV Bars Table | Yes | `PETR4 BZ Equity HP` |
-| `DES` | Security Contract Specifications & Feed | Yes | `VOD LN Equity DES` |
-| `OMON` | Black-Scholes Option Chain & Greeks | Optional | `AAPL OMON` |
-| `ORD` (F5) | Order Ticket, Risk Sizing, Bracket & Algos | Optional | `NVDA ORD` |
-| `MON` (F2) | Multi-Asset Watchlist & Feed Latency | No | `MON` |
-| `EQS` | Equity Screener (RVOL, RSI14, Breakouts) | No | `EQS` |
-| `PORT` (F6) | Portfolio, Margin, Blotter & Corp Actions | No | `PORT` |
-| `CORR` | Cross-Asset Correlation Matrix & Beta | No | `CORR` |
-| `MC` | Monte Carlo Drawdown & Ruin Simulator | No | `MC` |
-| `JRNL` | Trade Journal & Tag Attribution | No | `JRNL` |
-| `ALRT` | Price Crossing Audio/Toast Alerts | No | `ALRT` |
-| `CURVE` (F7) | Sovereign Yield Curve & Inversion Spreads | No | `CURVE` |
-| `ECO` (F8) | Macro Series & Release Calendar | No | `ECO` |
-| `FX` (F9) | FX Spot & 5x5 Cross-Rate Matrix | No | `FX` |
-| `REPLAY` (F10) | Session Setup, Clock, Headless & Blind Mode | No | `REPLAY` |
-| `WS` / `LOAD` | Load Workspace Preset or Saved Layout | No | `WS QUANT` / `WS SCALP` |
+Every execution rule, margin threshold, OCO tie-breaker, and Black-Scholes identity is covered by hand-calculated unit tests:
 
----
+```bash
+# Backend unit & engine tests (164 tests) + Ruff linter
+.venv/Scripts/python -m pytest -q
+.venv/Scripts/python -m ruff check .
 
-## Architecture & Verification
+# Optional live provider validation against official endpoints (Binance, BCB, FRED, Tesouro, Yahoo)
+.venv/Scripts/python -m pytest --live tests/test_live.py
 
-```
-src/market_holder/
-  domain/      Instrument, Bar, Tick, Order, Fill, Position, Portfolio, Symbol
-  engine/      execution.py, account.py, engine.py, options.py, quant.py (zero web/provider imports)
-  providers/   binance.py, bcb.py, fred.py, tesouro.py, yahoo.py + SQLite gap-aware cache
-  clock/       ReplayClock (deterministic) and LiveClock (push)
-  api/         FastAPI REST + WebSocket (/ws)
-web/src/
-  commands/    Command-line parser and terminal mnemonics
-  layout/      flexlayout-react model, localStorage persistence, and workspace presets
-  panels/      GP, OMON, Quant (EQS/CORR/MC), Journal (JRNL/ALRT), Ord, Port, Book, Macro, Mon, Replay
-tests/         Hand-calculated engine, margin, options, OCO, bracket, and provider tests
+# Frontend unit tests (Vitest, 36 tests) + TypeScript strict typecheck + production bundle
+npm --prefix web test
+npm --prefix web run typecheck
+npm --prefix web run build
 ```
 
-| Check | Command |
-|---|---|
-| Backend unit & hand-calculated engine tests | `.venv/Scripts/python -m pytest -q` |
-| Python linter | `.venv/Scripts/python -m ruff check .` |
-| Frontend unit tests (Vitest) | `npm --prefix web test` |
-| Frontend TypeScript check & production build | `npm --prefix web run typecheck && npm --prefix web run build` |
-
 ---
 
-## Data Sources
+## Upstream Data Providers & Known Limits
 
-| Provider | Asset Classes | Official API | Notes |
-|---|---|:---:|---|
-| **Binance** | Spot Crypto (`BTCUSDT`, `ETHUSDT`, …) | Yes | Real-time `bookTicker` WebSocket stream, L2 depth (`/depth`), and historical klines |
-| **BCB (SGS & Olinda)** | Brazil Macro & FX (`SELIC`, `IPCA`, `USDBRL` PTAX) | Yes | Central Bank of Brazil open data endpoints |
-| **FRED** | US Treasury Curve (`DGS1MO`..`DGS30`) & US Macro | Yes | Federal Reserve Bank of St. Louis |
-| **Tesouro Direto** | Brazilian Sovereign Bonds (`Tesouro Selic`, `IPCA+`) | Yes | Tesouro Transparente daily PU & rates CSV |
-| **Yahoo Finance** | Global Equities, Indices, ETFs, Futures, FX | No | Undocumented public endpoint used as global fallback; subject to rate limits |
+| Provider | Coverage | Official | Latency / Notes |
+|:---|:---|:---:|:---|
+| **Binance** | Spot Crypto (`BTCUSDT`, `ETHUSDT`, …) | Yes | Real-time `bookTicker` WebSocket stream (~150ms fill latency), REST `/depth` L2 book, and historical klines |
+| **BCB (SGS / Olinda)** | Brazil Macro & FX (`SELIC`, `IPCA`, `USDBRL` PTAX) | Yes | Official Central Bank of Brazil open data series |
+| **FRED** | US Treasury Curve (`DGS1MO`..`DGS30`) & US Macro | Yes | Federal Reserve Bank of St. Louis daily/monthly series |
+| **Tesouro Direto** | Brazilian Sovereign Bonds (`Tesouro Selic`, `IPCA+`) | Yes | Tesouro Transparente official historical PU & yield CSV |
+| **Yahoo Finance** | Global Equities (40 exchanges), Indices, ETFs, Futures, FX | **No** | Undocumented public endpoint used as global fallback; subject to upstream rate limits (throttled to 2 req/s) |
 
----
-
-## Disclaimer
-
-Independent open-source educational simulator. Inspired by the keyboard workflows of professional financial terminals; not affiliated with, endorsed by, or derived from Bloomberg L.P. or any other vendor. No proprietary brand, logo, font, or code is used.
+> **Disclaimer:** Independent open-source simulation software for educational and quantitative research purposes. No real orders are routed and no financial advice is provided. Inspired by the keyboard ergonomics of professional trading terminals; not affiliated with, endorsed by, or derived from Bloomberg L.P. or any other vendor.

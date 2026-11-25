@@ -293,6 +293,7 @@ export default function App() {
     <PanelsCtx.Provider value={{ open: openFromPanel }}>
     <div className="app">
       <div className="cmdbar">
+        <span className="brand" title="Market Holder Workstation">MH</span>
         <span className="prompt">&gt;</span>
         <input
           ref={barRef}
