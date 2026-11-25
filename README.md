@@ -57,7 +57,8 @@ The simulation engine has **zero imports** from the web framework or external da
 │   ├─► account.py   : Multi-ccy cash, Reg T margin, borrow fee, splits     │
 │   ├─► engine.py    : FIX OrdStatus lifecycle, OCO, Iceberg, liquidation   │
 │   ├─► options.py   : Black-Scholes pricing, Greeks, IV smile & inversion  │
-│   └─► quant.py     : Wilder RSI, RVOL, Pearson correlation, Monte Carlo   │
+│   ├─► quant.py     : Wilder RSI, RVOL, Pearson correlation, Monte Carlo   │
+│   └─► bots.py      : Strategy bots, Sharpe/Sortino tear sheet, scenarios  │
 └───────────────────────────────┬───────────────────────────────────────────┘
                                 │ Snapshot & Event Stream
                                 ▼
@@ -83,6 +84,8 @@ Press `/` or `` ` `` anywhere to focus the command bar. The parser accepts full 
 | **`EQS`** | — | Equity Screener | Global | Scans session universe by `%Chg`, 20-bar Relative Volume (`RVOL`), `RSI(14)`, annualized realized vol, and 20-bar High/Low breakouts |
 | **`CORR`** | — | Correlation & Beta | Global | Cross-asset return Pearson correlation heatmap and benchmark Beta ($\beta$) |
 | **`MC`** | — | Monte Carlo Simulator | Global | Bootstraps closed blotter trades across $N$ paths to project 5th/50th/95th percentile terminal equity, max drawdown, and probability of ruin |
+| **`BOT`** | — | Automated Strategy Console | Global | Deploy systematic trading bots (`SMA_CROSS`, `RSI_REV`, `TURTLE_20`, `VWAP_TREND`) against the replay or live stream (`ALGO` alias) |
+| **`STATS`** | — | Performance Tear Sheet | Global | Portfolio Sharpe, Sortino, Calmar, Max Drawdown %, Win Rate, Alpha, and Base-100 Equity Curve vs. Buy & Hold (`PERF` alias) |
 | **`CURVE`** | `F7` | Sovereign Yield Curve | Global | US Treasury term structure (`1M`..`30Y` via FRED) synced to replay date with `2s10s`, `3m10s`, and `5s30s` spreads in bps |
 | **`ECO`** | `F8` | Macro Release Calendar | Global | BCB (`SELIC`, `IPCA`, `PTAX`) and FRED (`FEDFUNDS`, `CPI`, `UNRATE`) historical releases with Prior, 3M Consensus, Actual, and Surprise |
 | **`FX`** | `F9` | FX Cross Matrix | Global | 5x5 spot cross-rate matrix (`USD`, `EUR`, `GBP`, `JPY`, `BRL`) and daily variations |

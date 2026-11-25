@@ -59,6 +59,7 @@ class SessionReq(BaseModel):
     model: ModelCfg = ModelCfg()
     fees: FeeCfg = FeeCfg()
     margin: MarginCfg = MarginCfg()
+    scenario: str | None = None
 
 
 class OrderReq(BaseModel):
@@ -100,6 +101,13 @@ class CorporateActionReq(BaseModel):
     symbol: str
     kind: Literal["SPLIT", "DIVIDEND"]
     value: Decimal
+
+
+class BotReq(BaseModel):
+    symbol: str
+    strategy: Literal["SMA_CROSS", "RSI_REV", "TURTLE_20", "VWAP_TREND"] = "SMA_CROSS"
+    qty: Decimal
+    params: dict[str, float] = {}
 
 
 class BracketReq(BaseModel):

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Quote } from "../api";
+import { api, type HistoricalScenario, type Quote } from "../api";
 import { isBlindMode, secName, setBlindMode, utc } from "../fmt";
 import { useMarket } from "../store";
 import { UNIVERSE } from "../universe";
@@ -43,8 +43,16 @@ export function Replay() {
   const [borrowRate, setBorrowRate] = useState("0.03");
   const [autoLiq, setAutoLiq] = useState(true);
   const [blind, setBlind] = useState(isBlindMode);
+  const [scenarios, setScenarios] = useState<HistoricalScenario[]>([]);
+  const [activeScenario, setActiveScenario] = useState<string>("");
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<{ symbol: string; currency: string; name: string }[]>([]);
+  useEffect(() => {
+    api<{ scenarios: HistoricalScenario[] }>("GET", "/api/scenarios").then(
+      (r) => setScenarios(r.scenarios),
+      () => undefined,
+    );
+  }, []);
   useEffect(() => {
     if (q.trim().length < 2) { setHits([]); return; }
     let alive = true;
@@ -67,7 +75,7 @@ export function Replay() {
     void refresh();
   };
 
-  const create = async (overrideSymbols?: string, overrideStart?: string, overrideEnd?: string) => {
+  const create = async (overrideSymbols?: string, overrideStart?: string, overrideEnd?: string, scenarioId?: string) => {
     setErr("");
     setBusy(true);
     try {
@@ -89,7 +97,7 @@ export function Replay() {
       for (const c of cfgs) if (c.currency !== base && ["USD", "USDT"].includes(c.currency) && ["USD", "USDT"].includes(base)) fx[c.currency] = "1";
       await api("POST", "/api/session", {
         mode, symbols: cfgs, freq, base_currency: base, cash, fx,
-        ...(mode === "replay" ? { start: overrideStart ?? start, end: overrideEnd ?? end } : {}),
+        ...(mode === "replay" ? { start: overrideStart ?? start, end: overrideEnd ?? end, scenario: scenarioId ?? (activeScenario || undefined) } : {}),
         fees: { bps: "5" }, model: { half_spread_bps: "1" },
         margin: { initial_rate: "0.5", maintenance_rate: "0.25", allow_short: true, auto_liquidate: autoLiq },
       });
@@ -99,6 +107,16 @@ export function Replay() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const launchScenario = async (sc: HistoricalScenario) => {
+    setMode("replay");
+    setFreq(sc.freq);
+    setStart(sc.start);
+    setEnd(sc.end);
+    setSymbols(sc.symbols);
+    setActiveScenario(sc.id);
+    await create(sc.symbols, sc.start, sc.end, sc.id);
   };
 
   const startBlindTraining = async () => {
@@ -152,9 +170,37 @@ export function Replay() {
               {blind ? "Reveal Real Tickers & Dates" : "Mask Identity (Blind Mode)"}
             </button>
           </div>
+          {snapshot.macro_events && snapshot.macro_events.length > 0 && (
+            <div className="block" style={{ borderColor: "#ffa028" }}>
+              <b className="sym">HISTORICAL MACRO WIRE ({snapshot.meta.scenario}):</b>
+              {[...snapshot.macro_events].reverse().map((ev) => (
+                <div key={ev.date}>
+                  <span className="sym">[{ev.date}]</span> {ev.headline}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <div className="dim">No session. Create one below (real data, simulated execution).</div>
+      )}
+      {scenarios.length > 0 && (
+        <div className="block">
+          <div className="dim">Historical Regime &amp; Crisis Scenarios (1-Click Multi-Asset Replay with Timed Macro News Wire):</div>
+          <div className="row presets">
+            {scenarios.map((sc) => (
+              <button
+                key={sc.id}
+                disabled={busy}
+                className={activeScenario === sc.id ? "on buy" : ""}
+                onClick={() => launchScenario(sc)}
+                title={sc.description}
+              >
+                ⚡ {sc.title} ({sc.start.slice(0, 7)})
+              </button>
+            ))}
+          </div>
+        </div>
       )}
       {snapshot && !blind && <MarketHours quotes={snapshot.quotes} live={snapshot.meta.mode === "live"} />}
       <div className="block">

@@ -95,6 +95,14 @@ export default function App() {
             t = { id: Date.now() + Math.random(), kind: "err", text: `REJECTED ${o.order.id}: ${o.reject_reason}` };
             beep(200);
           }
+        } else if (e.type === "macro_event") {
+          const ev = e.event;
+          t = {
+            id: Date.now() + Math.random(),
+            kind: "err",
+            text: `NEWS WIRE [${ev.date}]: ${ev.headline}`,
+          };
+          beep(660);
         } else if (e.type === "bar" || e.type === "tick") {
           const sym = e.type === "bar" ? e.bar.symbol : e.symbol;
           const price = Number(e.type === "bar" ? e.bar.close : e.price);

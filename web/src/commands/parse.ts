@@ -13,6 +13,8 @@ export const FUNCTIONS = {
   PORT: { title: "Portfolio, Risk & Blotter", needsSymbol: false },
   CORR: { title: "Correlation Matrix & Beta", needsSymbol: false },
   MC: { title: "Monte Carlo Risk & Ruin Simulator", needsSymbol: false },
+  BOT: { title: "Automated Strategy & Bot Console", needsSymbol: false },
+  STATS: { title: "Performance Tear Sheet (Sharpe, Sortino & Equity)", needsSymbol: false },
   JRNL: { title: "Trade Journal & Tag Analytics", needsSymbol: false },
   ALRT: { title: "Price & Execution Alerts", needsSymbol: false },
   CURVE: { title: "Sovereign Yield Curve & Spreads", needsSymbol: false },
@@ -132,4 +134,6 @@ export const ALIASES: Record<string, FnCode> = {
   OPT: "OMON",
   SCAN: "EQS",
   BLIND: "REPLAY",
+  ALGO: "BOT",
+  PERF: "STATS",
 };

@@ -200,3 +200,76 @@ def test_quant_screener_correlation_and_monte_carlo():
     assert len(mc["fan_paths"]) == 25
     assert realized_volatility([100.0, 101.0, 99.5, 102.0]) > 0
     assert rsi([float(100 + i) for i in range(20)], 14) == 100.0
+
+
+def test_dynamic_option_repricing_and_portfolio_greeks_in_replay():
+    from market_holder.domain.models import Fill
+    from market_holder.domain.symbol import AssetClass
+
+    e = make_engine(cash=100000)
+    # 5 barras subindo de 100 para 115
+    bars = [bar(i, 100 + i * 3, 103 + i * 3, 99 + i * 3, 102 + i * 3, v=1000) for i in range(5)]
+    s = Session(e, bars, T0)
+
+    opt_sym = Symbol(AssetClass.OPT, "B3", "PETR4_30D_C100")
+    e.account.instruments[opt_sym] = Instrument(opt_sym, "BRL", multiplier=D(100))
+    e.account.marks[opt_sym] = D("5.00")
+    s.register_option(opt_sym, SYM, "CALL", 100.0, 30)
+    e.account.apply_fill(Fill("opt1", opt_sym, BUY, D(1), D("5.00"), T0))
+
+    mark_before = e.account.mark(opt_sym)
+    assert mark_before == D("5.00")
+
+    # Avança o replay -> ativo objeto sobe de 100 para 114 -> Call ITM sobe acima de 14.00
+    s.fast_forward(steps=5)
+    mark_after = e.account.mark(opt_sym)
+    assert mark_after > D("14.00")
+    assert e.account.unrealized(opt_sym) > D("900")  # (14+ - 5) * 100
+
+    greeks = s.portfolio_greeks()
+    assert greeks["delta_dollars"] > 5000.0
+    assert greeks["theta_daily"] < 0.0  # comprado em opção paga theta
+
+
+def test_automated_bot_execution_and_session_stats():
+    e = make_engine(cash=100000)
+    # Série que cai e depois dispara para acionar SMA_CROSS (fast=3, slow=6)
+    prices = [100, 99, 98, 97, 96, 95, 96, 99, 103, 108, 112, 115]
+    bars = [bar(i, p, p + 1, p - 1, p, v=1000) for i, p in enumerate(prices)]
+    s = Session(e, bars, T0)
+    bot = s.add_bot(SYM, "SMA_CROSS", D(10), {"fast": 3.0, "slow": 6.0})
+    s.fast_forward(steps=20)
+    assert bot.signals_count >= 1
+    st = s.stats()
+    assert len(st["curve"]) >= 2
+    assert "sharpe" in st and "sortino" in st and "max_drawdown_pct" in st
+
+
+def test_macro_events_triggered_in_historical_scenario():
+    e = make_engine(cash=100000)
+    from datetime import UTC, datetime
+
+    t_covid = datetime(2020, 2, 23, 12, 0, tzinfo=UTC)
+    bars = [
+        Bar(SYM, t_covid + timedelta(days=i), Freq.D1, D(100), D(101), D(99), D(100), D(1000))
+        for i in range(4)
+    ]
+    s = Session(e, bars, t_covid)
+    s.meta["scenario"] = "COVID_2020"
+    s.fast_forward(steps=4)
+    # Deve ter disparado o evento de 2020-02-24
+    assert any(ev["date"] == "2020-02-24" for ev in s.macro_events)
+
+
+def test_bar_cache_f4_sub_period_empty_poll_does_not_poison_coverage():
+    from market_holder.providers.cache import BarCache
+
+    c = BarCache(":memory:")
+    # Janela de 10s (< 60s de 1m) vazia não deve ser marcada como coberta
+    c.put(SYM, Freq.M1, T0, T0 + timedelta(seconds=10), [])
+    assert c.missing(SYM, Freq.M1, T0, T0 + timedelta(minutes=1)) == [
+        (T0, T0 + timedelta(minutes=1))
+    ]
+    # Janela >= 1 período (ex.: 2 min) vazia (fim de semana) continua sendo marcada como coberta
+    c.put(SYM, Freq.M1, T0, T0 + timedelta(minutes=2), [])
+    assert c.missing(SYM, Freq.M1, T0, T0 + timedelta(minutes=2)) == []

@@ -83,6 +83,10 @@ class BarCache:
                     if start <= b.ts < end
                 ],
             )
+            # Evita bug F4: um intervalo curto (< 1 período de barra) que voltou vazio em polling
+            # incremental não contém abertura de barra e não deve ser gravado como "coberto".
+            if not bars and (end - start) < timedelta(seconds=PERIOD_S[freq]):
+                return
             merged: list[list[datetime]] = []
             for s, e in sorted([*self._coverage(symbol, freq), (start, end)]):
                 if merged and s <= merged[-1][1]:

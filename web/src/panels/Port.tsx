@@ -43,6 +43,15 @@ export function Port() {
         {borrowFees > 0 && <span className="down">Short Borrow <b>{num(borrowFees)}</b></span>}
         {s.margin.margin_call && <span className="err blink">MARGIN CALL</span>}
       </div>
+      {s.greeks && (
+        <div className="kpis dim">
+          <span>Portfolio Greeks:</span>
+          <span>Net Δ ($) <b className={sign(s.greeks.delta_dollars)}>{num(s.greeks.delta_dollars)}</b></span>
+          <span>Net Γ <b>{num(s.greeks.gamma, 4)}</b></span>
+          <span>Net Θ ($/day) <b className={sign(s.greeks.theta_daily)}>{num(s.greeks.theta_daily)}</b></span>
+          <span>Net Vega ($/1% IV) <b>{num(s.greeks.vega)}</b></span>
+        </div>
+      )}
       <h4>Positions</h4>
       <table className="grid">
         <thead>

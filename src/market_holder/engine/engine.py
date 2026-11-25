@@ -13,6 +13,7 @@ from datetime import datetime
 from decimal import ROUND_FLOOR, Decimal
 from typing import Any
 
+from market_holder.domain.hours import session_date_for
 from market_holder.domain.models import (
     ZERO,
     Bar,
@@ -77,10 +78,15 @@ class Engine:
 
     # --- ordens ---
 
+    def _session_key(self, symbol: Symbol, ts: datetime) -> Any:
+        if self.session_of is _utc_date:
+            return session_date_for(symbol, ts)
+        return self.session_of(ts)
+
     def submit(self, order: Order) -> OrderState:
         if order.id in self.orders:
             raise ValueError(f"id de ordem duplicado: {order.id}")
-        state = OrderState(order, self.session_of(order.ts))
+        state = OrderState(order, self._session_key(order.symbol, order.ts))
         reason = self._validate(order)
         if reason:
             state.status = OrderStatus.REJECTED
@@ -135,10 +141,11 @@ class Engine:
         if self.model.max_participation is not None and c.volume > 0:
             budget = c.volume * self.model.max_participation
         fills: list[Fill] = []
-        session = self.session_of(c.ts)
-        if self._last_session is not None and session != self._last_session:
+        session = self._session_key(symbol, c.ts)
+        utc_day = _utc_date(c.ts)
+        if self._last_session is not None and utc_day != self._last_session:
             self.account.charge_borrow_fee(1)
-        self._last_session = session
+        self._last_session = utc_day
         done_oco: set[str] = set()
 
         # OCO: se stop e alvo do mesmo grupo cabem na mesma barra, o stop vem primeiro (pior caso

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type CorrelationResp, type MonteCarloResp, type ScreenerRow } from "../api";
+import { api, type CorrelationResp, type MonteCarloResp, type ScreenerRow, type SessionStatsResp } from "../api";
 import { num, px, secName, sign } from "../fmt";
 import { useMarket, usePanels } from "../store";
 
@@ -248,6 +248,206 @@ export function Mc() {
               </tr>
             </tbody>
           </table>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** BOT: Automated Trading Strategy & Bot Console */
+export function BotPanel() {
+  const { snapshot, refresh } = useMarket();
+  const [sym, setSym] = useState("");
+  const [strategy, setStrategy] = useState<"SMA_CROSS" | "RSI_REV" | "TURTLE_20" | "VWAP_TREND">("SMA_CROSS");
+  const [qty, setQty] = useState("10");
+  const [p1, setP1] = useState("5");
+  const [p2, setP2] = useState("15");
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    if (!sym && snapshot?.quotes.length) setSym(snapshot.quotes[0].symbol);
+  }, [snapshot, sym]);
+
+  if (!snapshot) return <div className="panel-body dim">No session. Press F10 (REPLAY) to start one.</div>;
+
+  const createBot = async () => {
+    if (!sym) return;
+    const params: Record<string, number> =
+      strategy === "SMA_CROSS"
+        ? { fast: Number(p1) || 5, slow: Number(p2) || 15 }
+        : strategy === "RSI_REV"
+        ? { period: 14, oversold: Number(p1) || 32, overbought: Number(p2) || 68 }
+        : { lookback: Number(p1) || 10 };
+    try {
+      await api("POST", "/api/bots", { symbol: sym, strategy, qty, params });
+      setMsg(`Deployed ${strategy} bot on ${secName(sym)}`);
+      void refresh();
+    } catch (e) {
+      setMsg(String(e));
+    }
+  };
+
+  const toggle = async (id: string) => {
+    await api("PATCH", `/api/bots/${id}`);
+    void refresh();
+  };
+
+  const remove = async (id: string) => {
+    await api("DELETE", `/api/bots/${id}`);
+    void refresh();
+  };
+
+  const runHeadlessBacktest = async () => {
+    try {
+      await api("POST", "/api/clock", { action: "fast_forward", steps: 10000 });
+      setMsg("Headless backtest completed (up to 10,000 steps). Open STATS or PORT for results.");
+      void refresh();
+    } catch (e) {
+      setMsg(String(e));
+    }
+  };
+
+  const bots = snapshot.bots ?? [];
+
+  return (
+    <div className="panel-body form">
+      <div className="block">
+        <div className="row">
+          <label>Security
+            <select aria-label="Bot Security" value={sym} onChange={(e) => setSym(e.target.value)}>
+              {snapshot.quotes.map((q) => <option key={q.symbol} value={q.symbol}>{secName(q.symbol)}</option>)}
+            </select>
+          </label>
+          <label>Strategy Logic
+            <select
+              aria-label="Bot Strategy"
+              value={strategy}
+              onChange={(e) => {
+                const s = e.target.value as typeof strategy;
+                setStrategy(s);
+                if (s === "SMA_CROSS") { setP1("5"); setP2("15"); }
+                else if (s === "RSI_REV") { setP1("32"); setP2("68"); }
+                else { setP1("10"); setP2("20"); }
+              }}
+            >
+              <option value="SMA_CROSS">SMA Golden/Death Crossover</option>
+              <option value="RSI_REV">RSI(14) Mean Reversion (Oversold/Overbought)</option>
+              <option value="TURTLE_20">Donchian / Turtle Channel Breakout</option>
+              <option value="VWAP_TREND">Session VWAP Momentum Crossover</option>
+            </select>
+          </label>
+          <label>Order Lot Qty
+            <input aria-label="Bot Qty" value={qty} onChange={(e) => setQty(e.target.value)} size={6} />
+          </label>
+          {strategy === "SMA_CROSS" && (
+            <>
+              <label>Fast SMA<input aria-label="Fast SMA" value={p1} onChange={(e) => setP1(e.target.value)} size={4} /></label>
+              <label>Slow SMA<input aria-label="Slow SMA" value={p2} onChange={(e) => setP2(e.target.value)} size={4} /></label>
+            </>
+          )}
+          {strategy === "RSI_REV" && (
+            <>
+              <label>Buy RSI ≤<input aria-label="Oversold" value={p1} onChange={(e) => setP1(e.target.value)} size={4} /></label>
+              <label>Sell RSI ≥<input aria-label="Overbought" value={p2} onChange={(e) => setP2(e.target.value)} size={4} /></label>
+            </>
+          )}
+          {strategy === "TURTLE_20" && (
+            <label>Channel Bars<input aria-label="Lookback" value={p1} onChange={(e) => setP1(e.target.value)} size={4} /></label>
+          )}
+          <button className="on buy" onClick={createBot}>+ Deploy Bot</button>
+          {snapshot.meta.mode !== "live" && (
+            <button onClick={runHeadlessBacktest} title="Run active bots through the entire replay at 10,000x speed">
+              ⚡ Run 10,000x Backtest
+            </button>
+          )}
+        </div>
+        {msg && <div className="ok">{msg}</div>}
+      </div>
+
+      <h4>Active &amp; Deployed Strategy Bots ({bots.length})</h4>
+      <table className="grid">
+        <thead>
+          <tr><th>ID</th><th>Strategy</th><th>Security</th><th className="r">Lot Qty</th><th className="r">Signals</th><th>Last Signal &amp; Order</th><th>Status</th><th /></tr>
+        </thead>
+        <tbody>
+          {bots.length === 0 && <tr><td colSpan={8} className="dim">No bots deployed. Deploy one above and step or fast-forward the replay clock.</td></tr>}
+          {bots.map((b) => (
+            <tr key={b.id}>
+              <td>{b.id}</td>
+              <td className="sym">{b.strategy}</td>
+              <td className="sym">{secName(b.symbol)}</td>
+              <td className="r">{num(b.qty, 4)}</td>
+              <td className="r"><b>{b.signals_count}</b></td>
+              <td className="dim">{b.last_signal}</td>
+              <td className={b.active ? "up" : "down"}>{b.active ? "RUNNING" : "PAUSED"}</td>
+              <td>
+                <button className="mini" onClick={() => toggle(b.id)}>{b.active ? "Pause" : "Resume"}</button>{" "}
+                <button className="mini" onClick={() => remove(b.id)}>Delete</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="dim">
+        Bots evaluate strictly on closed session bars (zero lookahead) and route market orders into the main PORT account.
+      </div>
+    </div>
+  );
+}
+
+/** STATS: Institutional Performance Tear Sheet (Sharpe, Sortino, Calmar, Max DD & Base-100 Equity vs Benchmark) */
+export function StatsPanel() {
+  const { snapshot } = useMarket();
+  const [stats, setStats] = useState<SessionStatsResp | null>(null);
+
+  useEffect(() => {
+    if (!snapshot) return;
+    let alive = true;
+    api<SessionStatsResp>("GET", "/api/quant/stats").then(
+      (r) => alive && setStats(r),
+      () => undefined,
+    );
+    return () => { alive = false; };
+  }, [snapshot?.clock.now, snapshot?.id, snapshot?.fills.length]);
+
+  if (!snapshot) return <div className="panel-body dim">No session. Press F10 (REPLAY) to start one.</div>;
+
+  const renderCurve = (st: SessionStatsResp) => {
+    if (st.curve.length < 2) return <div className="dim">Advance the replay clock to build the equity curve.</div>;
+    const vals = st.curve.flatMap((c) => [c.eq_base100, c.bench_base100]);
+    const lo = Math.min(...vals);
+    const hi = Math.max(...vals);
+    const w = 620;
+    const h = 165;
+    const toPts = (key: "eq_base100" | "bench_base100") =>
+      st.curve
+        .map((c, i) => `${(i / (st.curve.length - 1 || 1)) * (w - 24) + 12},${h - 16 - ((c[key] - lo) / (hi - lo || 1)) * (h - 32)}`)
+        .join(" ");
+    return (
+      <svg width={w} height={h} className="spark" role="img" aria-label="Equity vs Benchmark Base 100">
+        <polyline points={toPts("bench_base100")} fill="none" stroke="#7a7a7a" strokeWidth={1.3} strokeDasharray="3,3" />
+        <polyline points={toPts("eq_base100")} fill="none" stroke="#ffa028" strokeWidth={2.2} />
+      </svg>
+    );
+  };
+
+  return (
+    <div className="panel-body form">
+      {stats && (
+        <>
+          <div className="kpis">
+            <span className={sign(stats.total_return_pct)}>Total Return <b>{stats.total_return_pct >= 0 ? "+" : ""}{num(stats.total_return_pct, 2)}%</b></span>
+            <span className={sign(stats.benchmark_return_pct)}>Benchmark (Buy&amp;Hold) <b>{stats.benchmark_return_pct >= 0 ? "+" : ""}{num(stats.benchmark_return_pct, 2)}%</b></span>
+            <span className={sign(stats.alpha_pct)}>Net Alpha <b>{stats.alpha_pct >= 0 ? "+" : ""}{num(stats.alpha_pct, 2)}%</b></span>
+            <span>Sharpe Ratio <b>{num(stats.sharpe, 2)}</b></span>
+            <span>Sortino Ratio <b>{num(stats.sortino, 2)}</b></span>
+            <span>Calmar Ratio <b>{num(stats.calmar, 2)}</b></span>
+            <span className="down">Max Drawdown <b>-{num(stats.max_drawdown_pct, 2)}%</b></span>
+            <span>Win Rate <b>{num(stats.win_rate_pct, 1)}%</b> ({stats.trades_closed} trades)</span>
+            <span>Profit Factor <b>{num(stats.profit_factor, 2)}</b></span>
+          </div>
+          <h4>Normalized Performance Curve (Base 100: <span style={{ color: "#ffa028" }}>■ Portfolio Equity</span> vs. <span className="dim">┅ Benchmark Buy &amp; Hold</span>)</h4>
+          {renderCurve(stats)}
         </>
       )}
     </div>

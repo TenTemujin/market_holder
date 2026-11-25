@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 
 from market_holder.api.schemas import (
     AlgoOrderReq,
+    BotReq,
     BracketReq,
     ClockReq,
     CorporateActionReq,
@@ -32,6 +33,7 @@ from market_holder.domain.models import Bar, Fill, Freq, Instrument, OrderType
 from market_holder.domain.serde import bar_to_dict, fill_to_dict
 from market_holder.domain.symbol import AssetClass, Symbol
 from market_holder.engine.account import Account, MarginPolicy
+from market_holder.engine.bots import HISTORICAL_SCENARIOS
 from market_holder.engine.engine import Engine
 from market_holder.engine.execution import ExecutionModel, FeeSchedule
 from market_holder.engine.options import option_chain, realized_volatility
@@ -262,6 +264,7 @@ def create_app(
             "freq": req.freq.value,
             "start": start.isoformat(),
             "end": None if live else end.isoformat(),
+            "scenario": req.scenario,
             "symbols": [c.model_dump(mode="json") for c in req.symbols],
             "feed": {
                 str(sym): {
@@ -459,6 +462,7 @@ def create_app(
                 multiplier=Decimal(100),
             )
         s.engine.account.marks[opt_sym] = req.price
+        s.register_option(opt_sym, und, req.right, float(req.strike), req.expiry_days)
         reason = s.engine.account.check_order(opt_sym, req.side, req.qty, req.price)
         if reason:
             raise HTTPException(422, reason)
@@ -520,6 +524,44 @@ def create_app(
         s.corporate_actions.append(rec)
         state.broadcast({"type": "snapshot", **s.snapshot()})
         return rec
+
+    @app.get("/api/scenarios")
+    async def list_scenarios() -> dict[str, Any]:
+        return {"scenarios": HISTORICAL_SCENARIOS}
+
+    @app.get("/api/quant/stats")
+    async def get_session_stats() -> dict[str, Any]:
+        s = need_session()
+        return s.stats()
+
+    @app.post("/api/bots")
+    async def create_bot(req: BotReq) -> dict[str, Any]:
+        s = need_session()
+        try:
+            bot = s.add_bot(parse_symbol(req.symbol), req.strategy, req.qty, req.params)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        state.broadcast({"type": "snapshot", **s.snapshot()})
+        return bot.to_dict()
+
+    @app.patch("/api/bots/{bot_id}")
+    async def toggle_bot(bot_id: str) -> dict[str, Any]:
+        s = need_session()
+        try:
+            bot = s.toggle_bot(bot_id)
+        except ValueError as e:
+            raise HTTPException(404, str(e)) from e
+        state.broadcast({"type": "snapshot", **s.snapshot()})
+        return bot.to_dict()
+
+    @app.delete("/api/bots/{bot_id}")
+    async def delete_bot(bot_id: str) -> dict[str, Any]:
+        s = need_session()
+        ok = s.remove_bot(bot_id)
+        if not ok:
+            raise HTTPException(404, "bot não encontrado")
+        state.broadcast({"type": "snapshot", **s.snapshot()})
+        return {"deleted": True}
 
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:

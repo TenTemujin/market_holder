@@ -214,3 +214,22 @@ def test_advanced_api_endpoints_options_quant_algos_modify_and_corp_actions(clie
         json={"symbol": "EQ:US:AAPL", "kind": "SPLIT", "value": "2"},
     )
     assert ca.status_code == 200 and ca.json()["kind"] == "SPLIT"
+
+    # 6. Historical Scenarios, Bots & Session Stats Tear Sheet
+    sc = client.get("/api/scenarios").json()
+    assert len(sc["scenarios"]) >= 4
+    bot = client.post(
+        "/api/bots",
+        json={
+            "symbol": "EQ:US:AAPL",
+            "strategy": "SMA_CROSS",
+            "qty": "5",
+            "params": {"fast": 2, "slow": 4},
+        },
+    ).json()
+    assert bot["id"] == "BOT1" and bot["active"] is True
+    toggled = client.patch("/api/bots/BOT1").json()
+    assert toggled["active"] is False
+    assert client.delete("/api/bots/BOT1").json()["deleted"] is True
+    stats = client.get("/api/quant/stats").json()
+    assert "sharpe" in stats and "sortino" in stats and len(stats["curve"]) >= 1

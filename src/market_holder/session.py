@@ -29,7 +29,16 @@ from market_holder.domain.models import (
 )
 from market_holder.domain.serde import bar_to_dict, fill_to_dict, order_to_dict
 from market_holder.domain.symbol import Symbol
+from market_holder.engine.bots import (
+    BotConfig,
+    BotStrategyKind,
+    compute_session_stats,
+    due_macro_events,
+    evaluate_bot_signal,
+)
 from market_holder.engine.engine import Engine, OrderState
+from market_holder.engine.options import OptionRight, black_scholes, realized_volatility
+from market_holder.engine.quant import extract_round_trip_pnls
 
 Event = dict[str, Any]
 
@@ -62,6 +71,18 @@ class AlgoTask:
         }
 
 
+@dataclass(slots=True)
+class OptionContractMeta:
+    option_symbol: Symbol
+    underlying: Symbol
+    right: OptionRight
+    strike: float
+    initial_expiry_days: int
+    opened_at: datetime
+    rate: float = 0.045
+    iv: float = 0.28
+
+
 def state_to_dict(st: OrderState) -> dict[str, Any]:
     return {
         "order": order_to_dict(st.order),
@@ -91,21 +112,168 @@ class Session:
         self.listeners: list[Callable[[Event], None]] = []
         self._seq = 0
         self._algo_seq = 0
+        self._bot_seq = 0
         self._seen: dict[str, tuple[str, Decimal]] = {}
         self._brackets: dict[str, tuple[Decimal, Decimal]] = {}  # entrada -> (stop, alvo)
         self.algos: dict[str, AlgoTask] = {}
+        self.bots: dict[str, BotConfig] = {}
+        self.option_contracts: dict[Symbol, OptionContractMeta] = {}
         self.corporate_actions: list[dict[str, Any]] = []
+        self.macro_events: list[dict[str, str]] = []
+        self._delivered_event_dates: set[str] = set()
+        self.equity_curve: list[dict[str, Any]] = []
         first: dict[Symbol, Bar] = {}
         for b in sorted(bars, key=lambda b: (b.ts, str(b.symbol))):
             first.setdefault(b.symbol, b)
         for sym, b in first.items():
             engine.account.marks[sym] = b.open
+        self._record_equity()
 
     def seed(self, bars: list[Bar]) -> None:
         """Contexto ao vivo: barras passadas só para o gráfico e o preço de referência."""
         for b in sorted(bars, key=lambda b: (b.ts, str(b.symbol))):
             self.history.setdefault(b.symbol, []).append(b)
             self.engine.account.marks[b.symbol] = b.close
+
+    def _record_equity(self) -> None:
+        try:
+            eq = self.engine.account.equity()
+        except Exception:  # noqa: BLE001
+            return
+        ts_iso = self.now.isoformat()
+        if self.equity_curve and self.equity_curve[-1]["ts"] == ts_iso:
+            self.equity_curve[-1]["equity"] = str(eq)
+        else:
+            self.equity_curve.append({"ts": ts_iso, "equity": str(eq)})
+
+    def register_option(
+        self,
+        opt_sym: Symbol,
+        underlying: Symbol,
+        right: OptionRight,
+        strike: float,
+        expiry_days: int,
+        rate: float = 0.045,
+    ) -> None:
+        hist = self.history.get(underlying, [])
+        closes = [float(b.close) for b in hist[-60:]]
+        iv = realized_volatility(closes)
+        self.option_contracts[opt_sym] = OptionContractMeta(
+            option_symbol=opt_sym,
+            underlying=underlying,
+            right=right,
+            strike=strike,
+            initial_expiry_days=expiry_days,
+            opened_at=self.now,
+            rate=rate,
+            iv=iv,
+        )
+
+    def _reprice_options(self) -> None:
+        if not self.option_contracts:
+            return
+        for opt_sym, meta in list(self.option_contracts.items()):
+            spot_dec = self.engine.account.marks.get(meta.underlying)
+            if spot_dec is None or spot_dec <= 0:
+                continue
+            elapsed_days = max(0, int((self.now - meta.opened_at).total_seconds() // 86400))
+            rem_days = max(0, meta.initial_expiry_days - elapsed_days)
+            hist = self.history.get(meta.underlying, [])
+            closes = [float(b.close) for b in hist[-60:]]
+            iv = realized_volatility(closes) if len(closes) >= 5 else meta.iv
+            q = black_scholes(
+                float(spot_dec), meta.strike, rem_days, meta.rate, iv, meta.right
+            )
+            self.engine.account.marks[opt_sym] = Decimal(str(max(0.01, q.price)))
+
+    def portfolio_greeks(self) -> dict[str, float]:
+        """Soma Delta ($), Gamma, Theta ($/dia) e Vega ($) de todas as posições abertas."""
+        net_delta_dollars = 0.0
+        net_gamma = 0.0
+        net_theta_daily = 0.0
+        net_vega = 0.0
+        acc = self.engine.account
+        for sym, pos in acc.portfolio.positions.items():
+            if pos.qty == 0:
+                continue
+            qty_f = float(pos.qty)
+            inst = acc.instruments[sym]
+            mult_f = float(inst.multiplier)
+            if sym in self.option_contracts:
+                meta = self.option_contracts[sym]
+                spot = float(acc.marks.get(meta.underlying, Decimal(100)))
+                elapsed = max(0, int((self.now - meta.opened_at).total_seconds() // 86400))
+                rem_days = max(0, meta.initial_expiry_days - elapsed)
+                q = black_scholes(spot, meta.strike, rem_days, meta.rate, meta.iv, meta.right)
+                net_delta_dollars += qty_f * mult_f * q.delta * spot
+                net_gamma += qty_f * mult_f * q.gamma
+                net_theta_daily += qty_f * mult_f * q.theta
+                net_vega += qty_f * mult_f * q.vega
+            else:
+                mark_f = float(acc.mark(sym))
+                net_delta_dollars += qty_f * mult_f * mark_f
+        return {
+            "delta_dollars": round(net_delta_dollars, 2),
+            "gamma": round(net_gamma, 4),
+            "theta_daily": round(net_theta_daily, 2),
+            "vega": round(net_vega, 2),
+        }
+
+    def add_bot(
+        self,
+        symbol: Symbol,
+        strategy: BotStrategyKind,
+        qty: Decimal,
+        params: dict[str, float] | None = None,
+    ) -> BotConfig:
+        if symbol not in self.engine.account.instruments:
+            raise ValueError(f"instrumento desconhecido: {symbol}")
+        if qty <= 0:
+            raise ValueError("qty do bot deve ser positiva")
+        self._bot_seq += 1
+        bot = BotConfig(
+            id=f"BOT{self._bot_seq}",
+            name=f"{strategy} ({symbol.ticker})",
+            strategy=strategy,
+            symbol=symbol,
+            qty=qty,
+            params=params or {},
+        )
+        self.bots[bot.id] = bot
+        return bot
+
+    def toggle_bot(self, bot_id: str) -> BotConfig:
+        if bot_id not in self.bots:
+            raise ValueError("bot não encontrado")
+        b = self.bots[bot_id]
+        b.active = not b.active
+        return b
+
+    def remove_bot(self, bot_id: str) -> bool:
+        return self.bots.pop(bot_id, None) is not None
+
+    def _run_bots(self, touched: set[Symbol]) -> None:
+        for bot in list(self.bots.values()):
+            if not bot.active or bot.symbol not in touched:
+                continue
+            bars = self.history.get(bot.symbol, [])
+            pos = self.engine.account.portfolio.positions.get(bot.symbol)
+            cur_qty = pos.qty if pos else Decimal(0)
+            sig = evaluate_bot_signal(bot, bars, cur_qty)
+            if sig is not None:
+                side, order_qty, reason = sig
+                st = self.place(
+                    bot.symbol, side, OrderType.MARKET, order_qty, tif=TimeInForce.GTC
+                )
+                bot.signals_count += 1
+                bot.last_signal = f"{side.value} {order_qty} ({reason}) -> {st.order.id}"
+                bot.last_signal_ts = self.now.isoformat()
+
+    def stats(self) -> dict[str, Any]:
+        first_sym = next(iter(self.engine.account.instruments), None)
+        bench_bars = self.history.get(first_sym, []) if first_sym else []
+        pnls = extract_round_trip_pnls(self.engine.fills)
+        return compute_session_stats(self.equity_curve, bench_bars, pnls)
 
     def emit(self, event: Event) -> None:
         for fn in list(self.listeners):
@@ -327,10 +495,18 @@ class Session:
             self.emit({"type": "bar", "bar": bar_to_dict(bar)})
         if self.clock.now is not None:
             self.now = max(self.now, self.clock.now)  # o relógio nunca anda para trás
+        self._reprice_options()
         self._flush(fills)
         for task in list(self.algos.values()):
             if task.active and task.symbol in touched_symbols:
                 self._step_algo_slice(task)
+        self._run_bots(touched_symbols)
+        for ev in due_macro_events(
+            self.meta.get("scenario"), self.now, self._delivered_event_dates
+        ):
+            self.macro_events.append(ev)
+            self.emit({"type": "macro_event", "event": ev})
+        self._record_equity()
         self.emit({"type": "clock", **self.clock_state()})
         return fills
 
@@ -462,7 +638,10 @@ class Session:
             "fees": {c: str(v) for c, v in acc.fees.items()},
             "borrow_fees": {c: str(v) for c, v in acc.borrow_fees.items()},
             "positions": positions,
+            "greeks": self.portfolio_greeks(),
             "orders": [state_to_dict(st) for st in self.engine.orders.values()],
             "algos": [a.to_dict() for a in self.algos.values()],
+            "bots": [b.to_dict() for b in self.bots.values()],
             "corporate_actions": self.corporate_actions,
+            "macro_events": self.macro_events,
         }

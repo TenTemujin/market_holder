@@ -57,12 +57,20 @@ export interface AlgoTask {
   id: string; algo: "TWAP" | "VWAP"; symbol: string; side: "BUY" | "SELL";
   total_qty: string; slices: number; filled_slices: number; executed_qty: string; active: boolean;
 }
+export interface BotRec {
+  id: string; name: string; strategy: "SMA_CROSS" | "RSI_REV" | "TURTLE_20" | "VWAP_TREND";
+  symbol: string; qty: string; active: boolean; params: Record<string, number>;
+  signals_count: number; last_signal: string; last_signal_ts: string | null;
+}
+export interface MacroEventRec { date: string; headline: string; scenario: string }
+export interface PortfolioGreeks { delta_dollars: number; gamma: number; theta_daily: number; vega: number }
 export interface CorporateActionRec { ts: string; symbol: string; kind: "SPLIT" | "DIVIDEND"; value: string }
 export interface Snapshot {
   id: number;
   meta: {
     mode?: "replay" | "live"; freq?: string; start?: string; end?: string | null; symbols?: SymbolCfg[];
     ticks?: string[];
+    scenario?: string | null;
     feed?: Record<string, { provider: string; delay_s: number; official: boolean }>;
   };
   quotes: Quote[];
@@ -79,9 +87,12 @@ export interface Snapshot {
   borrow_fees?: Record<string, string>;
   live?: { last_poll?: string; errors?: number; last_tick?: string; tick_errors?: number; last_error?: string };
   positions: Position[];
+  greeks?: PortfolioGreeks;
   orders: OrderState[];
   algos?: AlgoTask[];
+  bots?: BotRec[];
   corporate_actions?: CorporateActionRec[];
+  macro_events?: MacroEventRec[];
 }
 export interface OptionLeg {
   price: number; bid: number; ask: number; delta: number; gamma: number; theta: number; vega: number;
@@ -108,10 +119,21 @@ export interface BookData {
   symbol: string; source: string; bids: [string, string][]; asks: [string, string][];
   trades: { ts: string; price: string; qty: string; side: "BUY" | "SELL" }[];
 }
+export interface SessionStatsResp {
+  total_return_pct: number; benchmark_return_pct: number; alpha_pct: number;
+  sharpe: number; sortino: number; calmar: number; max_drawdown_pct: number;
+  win_rate_pct: number; profit_factor: number; trades_closed: number;
+  curve: { ts: string; equity: number; eq_base100: number; bench_base100: number }[];
+}
+export interface HistoricalScenario {
+  id: string; title: string; description: string; freq: string; start: string; end: string;
+  symbols: string; events: { date: string; headline: string }[];
+}
 export type MarketEvent =
   | { type: "bar"; bar: Bar }
   | { type: "fill"; fill: Fill }
   | { type: "order" }
   | { type: "clock" }
   | { type: "tick"; symbol: string; price: string; bid: string; ask: string; ts: string }
-  | { type: "feed_error"; symbol: string; error: string };
+  | { type: "feed_error"; symbol: string; error: string }
+  | { type: "macro_event"; event: MacroEventRec };

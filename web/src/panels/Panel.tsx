@@ -9,7 +9,7 @@ import { Mon } from "./Mon";
 import { Omon } from "./Omon";
 import { Ord } from "./Ord";
 import { Port } from "./Port";
-import { Corr, Eqs, Mc } from "./Quant";
+import { BotPanel, Corr, Eqs, Mc, StatsPanel } from "./Quant";
 import { Replay } from "./Replay";
 import { fmtChg } from "./util";
 
@@ -89,6 +89,8 @@ function Body({ fn, symbol }: { fn: FnCode; symbol?: string }) {
     case "PORT": return <Port />;
     case "CORR": return <Corr />;
     case "MC": return <Mc />;
+    case "BOT": return <BotPanel />;
+    case "STATS": return <StatsPanel />;
     case "JRNL": return <Jrnl />;
     case "ALRT": return <Alrt />;
     case "ORD": return <Ord symbol={symbol} />;

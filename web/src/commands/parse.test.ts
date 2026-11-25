@@ -58,6 +58,10 @@ describe("parseCommand", () => {
     expect(parseCommand("SCAN")).toEqual({ kind: "panel", fn: "EQS" });
     expect(parseCommand("CORR")).toEqual({ kind: "panel", fn: "CORR" });
     expect(parseCommand("MC")).toEqual({ kind: "panel", fn: "MC" });
+    expect(parseCommand("BOT")).toEqual({ kind: "panel", fn: "BOT" });
+    expect(parseCommand("ALGO")).toEqual({ kind: "panel", fn: "BOT" });
+    expect(parseCommand("STATS")).toEqual({ kind: "panel", fn: "STATS" });
+    expect(parseCommand("PERF")).toEqual({ kind: "panel", fn: "STATS" });
     expect(parseCommand("JRNL")).toEqual({ kind: "panel", fn: "JRNL" });
     expect(parseCommand("ALRT")).toEqual({ kind: "panel", fn: "ALRT" });
   });

@@ -56,7 +56,7 @@ export const WORKSPACE_PRESETS: Record<string, (defaultSym?: string) => IJsonMod
     layout: {
       type: "row",
       children: [
-        { type: "tabset", weight: 52, children: [tabJson("EQS"), tabJson("CORR"), tabJson("MC")] },
+        { type: "tabset", weight: 52, children: [tabJson("BOT"), tabJson("STATS"), tabJson("EQS"), tabJson("CORR"), tabJson("MC")] },
         { type: "tabset", weight: 48, children: [tabJson("GP", sym), tabJson("PORT"), tabJson("JRNL")] },
       ],
     },
