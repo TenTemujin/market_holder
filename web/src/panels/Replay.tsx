@@ -1,11 +1,35 @@
 import { useEffect, useState } from "react";
-import { api } from "../api";
-import { secName, utc } from "../fmt";
+import { api, type Quote } from "../api";
+import { isBlindMode, secName, setBlindMode, utc } from "../fmt";
 import { useMarket } from "../store";
 import { UNIVERSE } from "../universe";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const ago = (d: number) => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
+
+/** Aberto/fechado por mercado. No replay vale o relógio simulado; ao vivo, o relógio real. */
+function MarketHours({ quotes, live }: { quotes: Quote[]; live: boolean }) {
+  const groups = new Map<string, Quote["market"]>();
+  for (const q of quotes) {
+    if (q.market) groups.set(q.symbol.split(":").slice(0, 2).join(":"), q.market);
+  }
+  if (groups.size === 0) return null;
+  const closed = [...groups.values()].filter((m) => m && !m.open).length;
+  return (
+    <div className="block">
+      <div className="dim">Market hours ({live ? "real clock" : "simulated clock"}) · regular session only, no holidays</div>
+      {live && closed === groups.size && (
+        <div className="warn">All markets are closed: no new bars until the next open, so the session will sit idle.</div>
+      )}
+      {[...groups].map(([k, m]) => (
+        <div key={k} title={m!.hours}>
+          <b>{k}</b> <span className={m!.open ? "buy" : "sell"}>{m!.open ? "OPEN" : "CLOSED"}</span>
+          {m!.next_change && <> · {m!.open ? "closes" : "opens"} {utc(m!.next_change)} UTC</>}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function Replay() {
   const { snapshot, refresh } = useMarket();
@@ -16,6 +40,9 @@ export function Replay() {
   const [end, setEnd] = useState(today());
   const [cash, setCash] = useState("100000");
   const [base, setBase] = useState("USD");
+  const [borrowRate, setBorrowRate] = useState("0.03");
+  const [autoLiq, setAutoLiq] = useState(true);
+  const [blind, setBlind] = useState(isBlindMode);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<{ symbol: string; currency: string; name: string }[]>([]);
   useEffect(() => {
@@ -34,12 +61,19 @@ export function Replay() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const create = async () => {
+  const toggleBlind = (next: boolean) => {
+    setBlindMode(next);
+    setBlind(next);
+    void refresh();
+  };
+
+  const create = async (overrideSymbols?: string, overrideStart?: string, overrideEnd?: string) => {
     setErr("");
     setBusy(true);
     try {
+      const symText = overrideSymbols ?? symbols;
       // format: CLASS:MARKET:TICKER:CURRENCY separated by space or comma (currency = last field)
-      const cfgs = symbols
+      const cfgs = symText
         .split(/[\s,]+/)
         .filter(Boolean)
         .map((t) => {
@@ -47,16 +81,17 @@ export function Replay() {
           const symbol = t.slice(0, i);
           // crypto is fractional; stocks trade in lots of 1
           return symbol.startsWith("CRYPTO:")
-            ? { symbol, currency: t.slice(i + 1), lot_size: "0.00001" }
-            : { symbol, currency: t.slice(i + 1) };
+            ? { symbol, currency: t.slice(i + 1), lot_size: "0.00001", borrow_rate_annual: borrowRate }
+            : { symbol, currency: t.slice(i + 1), borrow_rate_annual: borrowRate };
         });
       // stablecoin and USD are treated as 1:1 (simulation); other currencies need a real rate
       const fx: Record<string, string> = {};
       for (const c of cfgs) if (c.currency !== base && ["USD", "USDT"].includes(c.currency) && ["USD", "USDT"].includes(base)) fx[c.currency] = "1";
       await api("POST", "/api/session", {
         mode, symbols: cfgs, freq, base_currency: base, cash, fx,
-        ...(mode === "replay" ? { start, end } : {}),
+        ...(mode === "replay" ? { start: overrideStart ?? start, end: overrideEnd ?? end } : {}),
         fees: { bps: "5" }, model: { half_spread_bps: "1" },
+        margin: { initial_rate: "0.5", maintenance_rate: "0.25", allow_short: true, auto_liquidate: autoLiq },
       });
       await refresh();
     } catch (e) {
@@ -65,6 +100,20 @@ export function Replay() {
       setBusy(false);
     }
   };
+
+  const startBlindTraining = async () => {
+    const allPool = Object.values(UNIVERSE).flat().map(([, s]) => s);
+    const chosen = allPool[Math.floor(Math.random() * allPool.length)] ?? "EQ:US:AAPL:USD";
+    const offsetDays = 30 + Math.floor(Math.random() * 180);
+    const sDate = ago(offsetDays + 14);
+    const eDate = ago(offsetDays);
+    toggleBlind(true);
+    setSymbols(chosen);
+    setStart(sDate);
+    setEnd(eDate);
+    await create(chosen, sDate, eDate);
+  };
+
   const clock = (body: object) => api("POST", "/api/clock", body).then(refresh, (e) => setErr(String(e)));
 
   return (
@@ -82,7 +131,10 @@ export function Replay() {
         </div>
       ) : snapshot ? (
         <div className="block">
-          <div>Session #{snapshot.id} · {snapshot.meta.freq} · {utc(snapshot.meta.start)} → {utc(snapshot.meta.end)}</div>
+          <div>
+            Session #{snapshot.id} · {snapshot.meta.freq} · {utc(snapshot.meta.start)} → {utc(snapshot.meta.end)}
+            {blind && <span className="warn" style={{ marginLeft: 8 }}>BLIND REPLAY MODE (IDENTITY MASKED)</span>}
+          </div>
           <div>
             Simulated time: <b>{utc(snapshot.clock.now)}</b> UTC · {snapshot.clock.remaining} events left
             {snapshot.clock.done ? " · END" : ""}
@@ -93,15 +145,27 @@ export function Replay() {
             <button onClick={() => clock({ action: "pause" })}>Pause</button>
             <input aria-label="Speed" value={speed} onChange={(e) => setSpeed(e.target.value)} size={6} />
             <button onClick={() => clock({ action: "speed", speed: Number(speed) })}>Set speed</button>
+            <button onClick={() => clock({ action: "fast_forward", steps: 10000 })} title="Run up to 10,000 bars headless at max CPU speed">
+              Fast-Forward 10,000x (Headless)
+            </button>
+            <button className={blind ? "on sell" : ""} onClick={() => toggleBlind(!blind)}>
+              {blind ? "Reveal Real Tickers & Dates" : "Mask Identity (Blind Mode)"}
+            </button>
           </div>
         </div>
       ) : (
         <div className="dim">No session. Create one below (real data, simulated execution).</div>
       )}
+      {snapshot && !blind && <MarketHours quotes={snapshot.quotes} live={snapshot.meta.mode === "live"} />}
       <div className="block">
         <div className="row">
           <button aria-pressed={mode === "replay"} className={mode === "replay" ? "on buy" : ""} onClick={() => setMode("replay")}>REPLAY</button>
           <button aria-pressed={mode === "live"} className={mode === "live" ? "on buy" : ""} onClick={() => setMode("live")}>LIVE</button>
+          {mode === "replay" && (
+            <button disabled={busy} onClick={startBlindTraining} title="Pick a random security and historical date window with masked identity">
+              🎲 Start Random Blind Replay
+            </button>
+          )}
         </div>
         {Object.entries(UNIVERSE).map(([group, items]) => {
           const all = items.map(([, s]) => s);
@@ -147,11 +211,17 @@ export function Replay() {
               <label>End<input aria-label="End" value={end} onChange={(e) => setEnd(e.target.value)} size={10} /></label>
             </>
           )}
+          <label title="Annual short borrow rate (e.g. 0.03 = 3% p.a.)">Short Borrow Rate
+            <input aria-label="Borrow Rate" value={borrowRate} onChange={(e) => setBorrowRate(e.target.value)} size={6} />
+          </label>
+          <button aria-pressed={autoLiq} className={autoLiq ? "on buy" : ""} onClick={() => setAutoLiq(!autoLiq)}>
+            Auto-Liquidate Margin Call: {autoLiq ? "ON" : "OFF"}
+          </button>
         </div>
         <div className="row">
           <label>Cash<input aria-label="Cash" value={cash} onChange={(e) => setCash(e.target.value)} size={10} /></label>
           <label>Base currency<input aria-label="Base currency" value={base} onChange={(e) => setBase(e.target.value)} size={6} /></label>
-          <button disabled={busy} onClick={create}>{busy ? "Loading…" : mode === "live" ? "Start live" : "Create session"}</button>
+          <button disabled={busy} onClick={() => create()}>{busy ? "Loading…" : mode === "live" ? "Start live" : "Create session"}</button>
         </div>
         {err && <div className="err">{err}</div>}
       </div>

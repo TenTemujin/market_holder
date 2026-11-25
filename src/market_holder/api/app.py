@@ -14,15 +14,33 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 
-from market_holder.api.schemas import BracketReq, ClockReq, ExitsReq, OrderReq, SessionReq, _utc
+from market_holder.api.schemas import (
+    AlgoOrderReq,
+    BracketReq,
+    ClockReq,
+    CorporateActionReq,
+    ExitsReq,
+    ModifyOrderReq,
+    OptionOrderReq,
+    OrderReq,
+    SessionReq,
+    _utc,
+)
 from market_holder.clock.live import PERIOD_S, LiveClock, LiveFeed, StreamTickFeed, TickFeed
 from market_holder.clock.replay import ReplayPlayer
-from market_holder.domain.models import Bar, Freq, Instrument, OrderType
-from market_holder.domain.serde import bar_to_dict
+from market_holder.domain.models import Bar, Fill, Freq, Instrument, OrderType
+from market_holder.domain.serde import bar_to_dict, fill_to_dict
 from market_holder.domain.symbol import AssetClass, Symbol
 from market_holder.engine.account import Account, MarginPolicy
 from market_holder.engine.engine import Engine
 from market_holder.engine.execution import ExecutionModel, FeeSchedule
+from market_holder.engine.options import option_chain, realized_volatility
+from market_holder.engine.quant import (
+    correlation_matrix,
+    extract_round_trip_pnls,
+    monte_carlo_simulation,
+    screener_metrics,
+)
 from market_holder.providers.base import Provider
 from market_holder.providers.bcb import BcbProvider
 from market_holder.providers.binance import BinanceProvider
@@ -188,8 +206,13 @@ def create_app(
             sym = parse_symbol(cfg.symbol)
             try:
                 instruments[sym] = Instrument(
-                    sym, cfg.currency, tick_size=cfg.tick_size, lot_size=cfg.lot_size,
+                    sym,
+                    cfg.currency,
+                    tick_size=cfg.tick_size,
+                    lot_size=cfg.lot_size,
                     multiplier=cfg.multiplier,
+                    borrow_rate_annual=cfg.borrow_rate_annual,
+                    locate_limit=cfg.locate_limit,
                 )
             except ValueError as e:
                 raise HTTPException(422, str(e)) from e
@@ -293,6 +316,9 @@ def create_app(
             if req.until is None:
                 raise HTTPException(422, "until é obrigatório")
             session.run_until(req.until)
+        elif req.action == "fast_forward":
+            session.fast_forward(max(1, min(req.steps, 100000)))
+            state.broadcast({"type": "snapshot", **session.snapshot()})
         else:
             if state.player is None:
                 state.player = ReplayPlayer(session.clock, session.step)
@@ -314,12 +340,39 @@ def create_app(
         session = need_session()
         try:
             st = session.place(
-                parse_symbol(req.symbol), req.side, req.type, req.qty,
-                req.limit_price, req.stop_price, req.tif, req.oco,
+                parse_symbol(req.symbol),
+                req.side,
+                req.type,
+                req.qty,
+                req.limit_price,
+                req.stop_price,
+                req.tif,
+                req.oco,
+                req.display_qty,
             )
         except ValueError as e:
             raise HTTPException(422, str(e)) from e
         return state_to_dict(st)
+
+    @app.patch("/api/orders/{order_id}")
+    async def modify_order(order_id: str, req: ModifyOrderReq) -> dict[str, Any]:
+        session = need_session()
+        try:
+            st = session.modify_order(order_id, req.limit_price, req.stop_price)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        return state_to_dict(st)
+
+    @app.post("/api/orders/algo")
+    async def place_algo_order(req: AlgoOrderReq) -> dict[str, Any]:
+        session = need_session()
+        try:
+            task = session.place_algo(
+                parse_symbol(req.symbol), req.side, req.algo, req.qty, req.slices
+            )
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        return task.to_dict()
 
     @app.post("/api/orders/bracket")
     async def place_bracket(req: BracketReq) -> dict[str, Any]:
@@ -353,6 +406,112 @@ def create_app(
         if order_id not in s.engine.orders:
             raise HTTPException(404, "ordem não encontrada")
         return {"canceled": s.cancel(order_id)}
+
+    @app.get("/api/options/chain")
+    async def get_option_chain(
+        symbol: str, expiry_days: int = 30, rate: float = 0.045, iv: float | None = None
+    ) -> dict[str, Any]:
+        s = need_session()
+        sym = parse_symbol(symbol)
+        if sym not in s.engine.account.instruments:
+            raise HTTPException(404, f"{sym} não está na sessão")
+        spot = float(s.engine.account.mark(sym))
+        hist = s.history.get(sym, [])
+        closes = [float(b.close) for b in hist[-60:]]
+        base_iv = iv if (iv is not None and iv > 0) else realized_volatility(closes)
+        chain = option_chain(spot, max(1, expiry_days), rate, base_iv)
+        return {
+            "symbol": str(sym),
+            "spot": round(spot, 4),
+            "expiry_days": expiry_days,
+            "rate": rate,
+            "base_iv": round(base_iv, 4),
+            "chain": chain,
+        }
+
+    @app.post("/api/options/order")
+    async def place_option_order(req: OptionOrderReq) -> dict[str, Any]:
+        s = need_session()
+        und = parse_symbol(req.underlying)
+        if und not in s.engine.account.instruments:
+            raise HTTPException(404, f"{und} não está na sessão")
+        if req.qty <= 0 or req.price <= 0:
+            raise HTTPException(422, "qty e price devem ser positivos")
+        und_inst = s.engine.account.instruments[und]
+        strike_tag = str(req.strike).replace(".", "_")
+        opt_ticker = f"{und.ticker}_{req.expiry_days}D_{req.right[0]}{strike_tag}"
+        opt_sym = Symbol(AssetClass.OPT, und.market, opt_ticker)
+        if opt_sym not in s.engine.account.instruments:
+            s.engine.account.instruments[opt_sym] = Instrument(
+                opt_sym,
+                und_inst.currency,
+                name=f"{und.ticker} {req.expiry_days}d {req.strike} {req.right}",
+                tick_size=Decimal("0.01"),
+                lot_size=Decimal(1),
+                multiplier=Decimal(100),
+            )
+        s.engine.account.marks[opt_sym] = req.price
+        reason = s.engine.account.check_order(opt_sym, req.side, req.qty, req.price)
+        if reason:
+            raise HTTPException(422, reason)
+        s._seq += 1
+        oid = f"OPT{s._seq}"
+        notional = req.qty * req.price * Decimal(100)
+        fee = s.engine.fees.fee(notional, first_fill=True)
+        fill = Fill(oid, opt_sym, req.side, req.qty, req.price, s.now, fee)
+        s.engine.account.apply_fill(fill)
+        s.engine.fills.append(fill)
+        s.emit({"type": "fill", "fill": fill_to_dict(fill)})
+        state.broadcast({"type": "snapshot", **s.snapshot()})
+        return {"order_id": oid, "symbol": str(opt_sym), "fill": fill_to_dict(fill)}
+
+    @app.get("/api/quant/screener")
+    async def get_screener() -> dict[str, Any]:
+        s = need_session()
+        hist = {sym: s.history.get(sym, []) for sym in s.engine.account.instruments}
+        return {"rows": screener_metrics(hist, s.engine.account.marks)}
+
+    @app.get("/api/quant/correlation")
+    async def get_correlation(benchmark: str | None = None) -> dict[str, Any]:
+        s = need_session()
+        hist = {sym: s.history.get(sym, []) for sym in s.engine.account.instruments}
+        bench = parse_symbol(benchmark) if benchmark else None
+        return correlation_matrix(hist, bench)
+
+    @app.get("/api/quant/montecarlo")
+    async def get_montecarlo(paths: int = 400, horizon: int = 50) -> dict[str, Any]:
+        s = need_session()
+        pnls = extract_round_trip_pnls(s.engine.fills)
+        eq = float(s.engine.account.equity())
+        return monte_carlo_simulation(
+            pnls,
+            initial_equity=max(1000.0, eq),
+            paths=max(50, min(paths, 2000)),
+            horizon_trades=max(10, min(horizon, 250)),
+        )
+
+    @app.post("/api/session/corporate_action")
+    async def apply_corporate_action(req: CorporateActionReq) -> dict[str, Any]:
+        s = need_session()
+        sym = parse_symbol(req.symbol)
+        if sym not in s.engine.account.instruments:
+            raise HTTPException(404, f"{sym} não está na sessão")
+        try:
+            if req.kind == "SPLIT":
+                s.engine.account.apply_split(sym, req.value)
+            else:
+                s.engine.account.apply_dividend(sym, req.value)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        rec = {
+            "ts": s.now.isoformat(),
+            "symbol": str(sym),
+            "kind": req.kind,
+            "value": str(req.value),
+        }
+        s.corporate_actions.append(rec)
+        state.broadcast({"type": "snapshot", **s.snapshot()})
+        return rec
 
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:

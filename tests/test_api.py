@@ -152,3 +152,65 @@ def test_foreign_currency_gets_automatic_fx_rate(client):
 
 def test_search_merges_providers(client):
     assert client.get("/api/search", params={"q": "apple"}).json() == {"results": []}
+
+
+def test_advanced_api_endpoints_options_quant_algos_modify_and_corp_actions(client):
+    client.post("/api/session", json=SESSION)
+    # 1. Option chain and option order
+    chain = client.get(
+        "/api/options/chain", params={"symbol": "EQ:US:AAPL", "expiry_days": 30}
+    ).json()
+    assert chain["spot"] == 100.0 and len(chain["chain"]) == 13
+    opt_res = client.post(
+        "/api/options/order",
+        json={
+            "underlying": "EQ:US:AAPL",
+            "right": "CALL",
+            "strike": "100",
+            "expiry_days": 30,
+            "side": "BUY",
+            "qty": "1",
+            "price": "3.50",
+        },
+    )
+    assert opt_res.status_code == 200
+    assert opt_res.json()["symbol"].startswith("OPT:US:AAPL_30D_C100")
+
+    # 2. Modify working limit order
+    o = client.post(
+        "/api/orders",
+        json={
+            "symbol": "EQ:US:AAPL",
+            "side": "BUY",
+            "type": "LIMIT",
+            "qty": "10",
+            "limit_price": "90",
+        },
+    ).json()
+    oid = o["order"]["id"]
+    mod = client.patch(f"/api/orders/{oid}", json={"limit_price": "95"}).json()
+    assert mod["order"]["limit_price"] == "95"
+
+    # 3. Algo order (TWAP) & Headless fast_forward
+    algo = client.post(
+        "/api/orders/algo",
+        json={"symbol": "EQ:US:AAPL", "side": "BUY", "algo": "TWAP", "qty": "20", "slices": 2},
+    ).json()
+    assert algo["algo"] == "TWAP" and algo["filled_slices"] == 1
+    ff = client.post("/api/clock", json={"action": "fast_forward", "steps": 10}).json()
+    assert ff["done"] is True
+
+    # 4. Quant endpoints (Screener, Correlation, Monte Carlo)
+    eqs = client.get("/api/quant/screener").json()
+    assert len(eqs["rows"]) >= 1
+    corr = client.get("/api/quant/correlation").json()
+    assert "EQ:US:AAPL" in corr["symbols"]
+    mc = client.get("/api/quant/montecarlo", params={"paths": 60, "horizon": 15}).json()
+    assert mc["paths"] == 60 and len(mc["fan_paths"]) == 25
+
+    # 5. Corporate action (Split 2:1)
+    ca = client.post(
+        "/api/session/corporate_action",
+        json={"symbol": "EQ:US:AAPL", "kind": "SPLIT", "value": "2"},
+    )
+    assert ca.status_code == 200 and ca.json()["kind"] == "SPLIT"

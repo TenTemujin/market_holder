@@ -170,3 +170,29 @@ h4 { margin: 10px 0 4px; color: var(--dim); font-weight: normal; }
 .hits { display: flex; flex-direction: column; gap: 2px; max-height: 180px; overflow-y: auto; }
 .hits button { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .presets { flex-wrap: wrap; }
+
+/* ===== Advanced Charting (GP), Option Chain (OMON) & Quant Terminal Polish ===== */
+.c { text-align: center; }
+.gp-root { display: flex; flex-direction: column; height: 100%; }
+.gp-toolbar {
+  display: flex; align-items: center; gap: 4px; padding: 3px 8px;
+  background: #080808; border-bottom: 1px solid #2a2a2a; flex-wrap: wrap;
+}
+.gp-toolbar .sep { color: #3a3a3a; margin: 0 2px; }
+.mini.on { background: var(--amber); color: #000; font-weight: bold; }
+.mini-sel { background: #000; color: var(--yellow); border: 1px solid #5a3a10; font: inherit; padding: 0 4px; }
+.gp-root .chart-wrap { flex: 1; min-height: 180px; }
+
+.vpvr-overlay {
+  position: absolute; right: 56px; top: 12px; bottom: 28px; width: 110px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  pointer-events: none; z-index: 2; opacity: 0.72;
+}
+.vpvr-row { flex: 1; display: flex; justify-content: flex-end; align-items: center; margin: 1px 0; }
+.vpvr-bar { height: 80%; background: #38bdf844; border-left: 2px solid #38bdf8; }
+.vpvr-bar.poc { background: #ffa02888; border-left: 2px solid #ffd400; }
+
+.omon-tbl td, .omon-tbl th { padding: 2px 6px; }
+.strike-hdr, .strike-cell { background: #1a1206 !important; border-left: 1px solid #5a3a10; border-right: 1px solid #5a3a10; font-weight: bold; }
+.atm-row td { border-top: 1px dashed #ffa02880; border-bottom: 1px dashed #ffa02880; }
+.itm { background: #ffa02814 !important; }

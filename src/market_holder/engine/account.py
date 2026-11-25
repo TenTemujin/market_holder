@@ -25,6 +25,7 @@ class MarginPolicy:
     initial_rate: Decimal = Decimal("0.5")
     maintenance_rate: Decimal = Decimal("0.25")
     allow_short: bool = True
+    auto_liquidate: bool = False  # liquidação forçada quando equity < maintenance_required
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +52,7 @@ class Account:
         self.fx: dict[str, Decimal] = {base_currency: Decimal(1)}
         self.realized: dict[Symbol, Decimal] = {}  # bruto de taxas, na moeda do instrumento
         self.fees: dict[str, Decimal] = {}
+        self.borrow_fees: dict[str, Decimal] = {}  # acumulado de aluguel de ações por moeda
 
     # --- mercado ---
 
@@ -139,15 +141,65 @@ class Account:
 
     # --- pré-negociação ---
 
+    def charge_borrow_fee(self, days: int = 1) -> dict[Symbol, Decimal]:
+        """Debita taxa diária de aluguel sobre posições vendidas (rate / 252 * days)."""
+        charged: dict[Symbol, Decimal] = {}
+        if days <= 0:
+            return charged
+        for symbol, pos in self.portfolio.positions.items():
+            if pos.qty >= 0:
+                continue
+            inst = self.instruments[symbol]
+            if inst.borrow_rate_annual <= 0:
+                continue
+            notional = abs(pos.qty) * self.mark(symbol) * inst.multiplier
+            fee = (notional * inst.borrow_rate_annual * Decimal(days)) / Decimal(252)
+            if fee > 0:
+                ccy = inst.currency
+                self.portfolio.cash[ccy] = self.portfolio.cash.get(ccy, ZERO) - fee
+                self.fees[ccy] = self.fees.get(ccy, ZERO) + fee
+                self.borrow_fees[ccy] = self.borrow_fees.get(ccy, ZERO) + fee
+                charged[symbol] = fee
+        return charged
+
+    def apply_split(self, symbol: Symbol, ratio: Decimal) -> None:
+        """Desdobramento (ratio > 1) ou grupamento (0 < ratio < 1): preserva valor financeiro."""
+        if ratio <= 0:
+            raise ValueError("ratio deve ser positivo")
+        pos = self.portfolio.positions.get(symbol)
+        if pos and pos.qty != 0:
+            pos.qty = pos.qty * ratio
+            pos.avg_price = pos.avg_price / ratio
+        if symbol in self.marks:
+            self.marks[symbol] = self.marks[symbol] / ratio
+
+    def apply_dividend(self, symbol: Symbol, amount_per_share: Decimal) -> Decimal:
+        """Crédito (comprado) ou débito (vendido) de dividendo em caixa na moeda do ativo."""
+        if amount_per_share <= 0:
+            raise ValueError("dividendo deve ser positivo")
+        pos = self.portfolio.positions.get(symbol)
+        if not pos or pos.qty == 0:
+            return ZERO
+        inst = self.instruments[symbol]
+        payment = pos.qty * amount_per_share * inst.multiplier
+        ccy = inst.currency
+        self.portfolio.cash[ccy] = self.portfolio.cash.get(ccy, ZERO) + payment
+        self.realized[symbol] = self.realized.get(symbol, ZERO) + payment
+        return payment
+
     def check_order(
         self, symbol: Symbol, side: Side, qty: Decimal, ref_price: Decimal
     ) -> str | None:
         """Motivo da rejeição, ou None se a ordem passa. Ordem que reduz exposição sempre passa."""
+        inst = self.instruments[symbol]
         pos = self.portfolio.positions.get(symbol)
         current = pos.qty if pos else ZERO
         after = current + side.sign * qty
         if after < 0 and not self.policy.allow_short:
             return "short selling not allowed"
+        if after < 0 and after < current and inst.locate_limit is not None:
+            if abs(after) > inst.locate_limit:
+                return f"insufficient locate (max {inst.locate_limit})"
         mark = self.mark(symbol) if (pos and pos.qty != 0) else ref_price
         old_value = abs(self._position_value_base(symbol, current, mark))
         new_value = abs(self._position_value_base(symbol, after, ref_price))

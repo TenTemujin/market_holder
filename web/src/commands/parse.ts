@@ -2,23 +2,29 @@
 // Mnemônicos próprios e genéricos (inspirados em terminais profissionais, sem copiar nenhum).
 
 export const FUNCTIONS = {
-  GP: { title: "Price Chart", needsSymbol: true },
+  GP: { title: "Price Chart & Technicals", needsSymbol: true },
   HP: { title: "Historical Prices", needsSymbol: true },
   DES: { title: "Security Description", needsSymbol: true },
   BOOK: { title: "Order Book & Time and Sales", needsSymbol: true },
-  ORD: { title: "Order Entry", needsSymbol: false },
-  MON: { title: "Monitor", needsSymbol: false },
-  PORT: { title: "Portfolio & Blotter", needsSymbol: false },
-  CURVE: { title: "Yield Curve", needsSymbol: false },
-  ECO: { title: "Economic Series", needsSymbol: false },
-  FX: { title: "Currencies", needsSymbol: false },
-  REPLAY: { title: "Session & Time Control", needsSymbol: false }
-  ,HELP: { title: "Help", needsSymbol: false },
+  OMON: { title: "Option Monitor & Greeks (Black-Scholes)", needsSymbol: false },
+  ORD: { title: "Order & Execution Ticket", needsSymbol: false },
+  MON: { title: "Multi-Asset Monitor", needsSymbol: false },
+  EQS: { title: "Equity Screener & Scanner", needsSymbol: false },
+  PORT: { title: "Portfolio, Risk & Blotter", needsSymbol: false },
+  CORR: { title: "Correlation Matrix & Beta", needsSymbol: false },
+  MC: { title: "Monte Carlo Risk & Ruin Simulator", needsSymbol: false },
+  JRNL: { title: "Trade Journal & Tag Analytics", needsSymbol: false },
+  ALRT: { title: "Price & Execution Alerts", needsSymbol: false },
+  CURVE: { title: "Sovereign Yield Curve & Spreads", needsSymbol: false },
+  ECO: { title: "Macro Series & Economic Releases", needsSymbol: false },
+  FX: { title: "FX Cross Matrix & Rates", needsSymbol: false },
+  REPLAY: { title: "Session, Clock & Blind Replay", needsSymbol: false },
+  HELP: { title: "Terminal Command Reference", needsSymbol: false },
 } as const;
 
 export type FnCode = keyof typeof FUNCTIONS;
 
-export const SHELL_COMMANDS = ["SAVE", "LOAD", "LAYOUTS", "RESET", "CLOSE"] as const;
+export const SHELL_COMMANDS = ["SAVE", "LOAD", "LAYOUTS", "RESET", "CLOSE", "WS"] as const;
 export type ShellCmd = (typeof SHELL_COMMANDS)[number];
 
 export type Parsed =
@@ -113,9 +119,17 @@ export function parseCommand(input: string): Parsed {
 
 export const HELP_TEXT =
   "Functions: " + Object.keys(FUNCTIONS).join(" ") +
-  " | Layout: SAVE <name> · LOAD <name> · LAYOUTS · RESET · CLOSE" +
+  " | Layout: WS <SCALP|MACRO|QUANT|OPTIONS> · SAVE <name> · LOAD <name> · LAYOUTS · RESET · CLOSE" +
   " | Security: AAPL US Equity GP · PETR4 BZ Equity GP · BTCUSDT Crypto GP · USDBRL Curncy GP" +
   " | Keys: F1 help · F2..F10 panels · ` or / command line · Esc exit · Alt+←/→ tabs · Alt+W close";
 
 // aliases de funções conhecidas do mercado
-export const ALIASES: Record<string, FnCode> = { GC: "CURVE", FXC: "FX", EMSX: "ORD" };
+export const ALIASES: Record<string, FnCode> = {
+  GC: "CURVE",
+  FXC: "FX",
+  EMSX: "ORD",
+  CHAIN: "OMON",
+  OPT: "OMON",
+  SCAN: "EQS",
+  BLIND: "REPLAY",
+};

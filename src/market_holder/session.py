@@ -9,12 +9,14 @@ preço "de agora" do instante inicial; assim já dá para enviar ordens antes da
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
-from decimal import Decimal
-from typing import Any
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from decimal import ROUND_FLOOR, Decimal
+from typing import Any, Literal
 
 from market_holder.clock.live import LiveClock
 from market_holder.clock.replay import ReplayClock
+from market_holder.domain.hours import market_status
 from market_holder.domain.models import (
     Bar,
     Fill,
@@ -30,6 +32,34 @@ from market_holder.domain.symbol import Symbol
 from market_holder.engine.engine import Engine, OrderState
 
 Event = dict[str, Any]
+
+
+@dataclass(slots=True)
+class AlgoTask:
+    id: str
+    algo: Literal["TWAP", "VWAP"]
+    symbol: Symbol
+    side: Side
+    total_qty: Decimal
+    slices: int
+    filled_slices: int = 0
+    executed_qty: Decimal = Decimal(0)
+    active: bool = True
+    child_order_ids: list[str] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "algo": self.algo,
+            "symbol": str(self.symbol),
+            "side": self.side.value,
+            "total_qty": str(self.total_qty),
+            "slices": self.slices,
+            "filled_slices": self.filled_slices,
+            "executed_qty": str(self.executed_qty),
+            "active": self.active,
+            "child_order_ids": self.child_order_ids or [],
+        }
 
 
 def state_to_dict(st: OrderState) -> dict[str, Any]:
@@ -60,8 +90,11 @@ class Session:
         self.history: dict[Symbol, list[Bar]] = {}  # só barras já processadas (sem lookahead)
         self.listeners: list[Callable[[Event], None]] = []
         self._seq = 0
+        self._algo_seq = 0
         self._seen: dict[str, tuple[str, Decimal]] = {}
         self._brackets: dict[str, tuple[Decimal, Decimal]] = {}  # entrada -> (stop, alvo)
+        self.algos: dict[str, AlgoTask] = {}
+        self.corporate_actions: list[dict[str, Any]] = []
         first: dict[Symbol, Bar] = {}
         for b in sorted(bars, key=lambda b: (b.ts, str(b.symbol))):
             first.setdefault(b.symbol, b)
@@ -90,15 +123,122 @@ class Session:
         stop_price: Decimal | None = None,
         tif: TimeInForce = TimeInForce.DAY,
         oco: str | None = None,
+        display_qty: Decimal | None = None,
     ) -> OrderState:
         self._seq += 1
         order = Order(
-            f"O{self._seq}", symbol, side, type_, qty, self.now, limit_price, stop_price, tif, oco
+            f"O{self._seq}",
+            symbol,
+            side,
+            type_,
+            qty,
+            self.now,
+            limit_price,
+            stop_price,
+            tif,
+            oco,
+            display_qty,
         )
         st = self.engine.submit(order)
         self._seen[order.id] = (st.status.value, st.filled_qty)
         self.emit({"type": "order", **state_to_dict(st)})
         return st
+
+    def place_algo(
+        self,
+        symbol: Symbol,
+        side: Side,
+        algo: Literal["TWAP", "VWAP"],
+        total_qty: Decimal,
+        slices: int = 5,
+    ) -> AlgoTask:
+        """Agenda execução algorítmica fatiada ao longo das próximas `slices` barras."""
+        if symbol not in self.engine.account.instruments:
+            raise ValueError(f"instrumento desconhecido: {symbol}")
+        if total_qty <= 0 or slices < 1 or slices > 200:
+            raise ValueError("parâmetros inválidos para algo (qty > 0, 1 <= slices <= 200)")
+        self._algo_seq += 1
+        task = AlgoTask(
+            id=f"A{self._algo_seq}",
+            algo=algo,
+            symbol=symbol,
+            side=side,
+            total_qty=total_qty,
+            slices=slices,
+            child_order_ids=[],
+        )
+        self.algos[task.id] = task
+        self._step_algo_slice(task)
+        return task
+
+    def _step_algo_slice(self, task: AlgoTask) -> None:
+        if not task.active:
+            return
+        remaining_slices = task.slices - task.filled_slices
+        rem_qty = task.total_qty - task.executed_qty
+        if remaining_slices <= 0 or rem_qty <= 0:
+            task.active = False
+            return
+        inst = self.engine.account.instruments[task.symbol]
+        if remaining_slices == 1:
+            slice_qty = rem_qty
+        elif task.algo == "TWAP":
+            raw = rem_qty / Decimal(remaining_slices)
+            lots = max(Decimal(1), (raw / inst.lot_size).to_integral_value(ROUND_FLOOR))
+            slice_qty = min(rem_qty, lots * inst.lot_size)
+        else:
+            weight = Decimal(1) / Decimal(remaining_slices)
+            hist = self.history.get(task.symbol, [])
+            if len(hist) >= 2:
+                vols = [b.volume for b in hist[-10:] if b.volume > 0]
+                if vols:
+                    avg_v = sum(vols) / Decimal(len(vols))
+                    cur_v = hist[-1].volume
+                    ratio = (cur_v / avg_v) if avg_v > 0 else Decimal(1)
+                    ratio = max(Decimal("0.5"), min(Decimal("1.8"), ratio))
+                    weight = min(Decimal("0.9"), weight * ratio)
+            raw = rem_qty * weight
+            lots = max(Decimal(1), (raw / inst.lot_size).to_integral_value(ROUND_FLOOR))
+            slice_qty = min(rem_qty, lots * inst.lot_size)
+        if slice_qty <= 0:
+            task.active = False
+            return
+        st = self.place(task.symbol, task.side, OrderType.MARKET, slice_qty, tif=TimeInForce.GTC)
+        if task.child_order_ids is not None:
+            task.child_order_ids.append(st.order.id)
+        task.filled_slices += 1
+        task.executed_qty += slice_qty
+        if task.filled_slices >= task.slices or task.executed_qty >= task.total_qty:
+            task.active = False
+
+    def modify_order(
+        self,
+        order_id: str,
+        limit_price: Decimal | None = None,
+        stop_price: Decimal | None = None,
+    ) -> OrderState:
+        """Altera o preço de uma ordem ativa (ex.: arrastar linha no gráfico GP)."""
+        if order_id not in self.engine.orders:
+            raise ValueError("ordem não encontrada")
+        old_st = self.engine.orders[order_id]
+        if not old_st.status.active:
+            raise ValueError("só ordens ativas podem ser alteradas")
+        old_o = old_st.order
+        rem_qty = old_st.leaves_qty
+        new_limit = limit_price if limit_price is not None else old_o.limit_price
+        new_stop = stop_price if stop_price is not None else old_o.stop_price
+        self.cancel(order_id)
+        return self.place(
+            old_o.symbol,
+            old_o.side,
+            old_o.type,
+            rem_qty,
+            new_limit,
+            new_stop,
+            old_o.tif,
+            old_o.oco,
+            old_o.display_qty,
+        )
 
     def place_bracket(
         self,
@@ -179,14 +319,33 @@ class Session:
     def step(self) -> list[Fill]:
         batch = self.clock.next_batch()
         fills: list[Fill] = []
+        touched_symbols: set[Symbol] = set()
         for bar in batch:
             fills += self.engine.on_bar(bar)
             self.history.setdefault(bar.symbol, []).append(bar)
+            touched_symbols.add(bar.symbol)
             self.emit({"type": "bar", "bar": bar_to_dict(bar)})
         if self.clock.now is not None:
             self.now = max(self.now, self.clock.now)  # o relógio nunca anda para trás
         self._flush(fills)
+        for task in list(self.algos.values()):
+            if task.active and task.symbol in touched_symbols:
+                self._step_algo_slice(task)
         self.emit({"type": "clock", **self.clock_state()})
+        return fills
+
+    def fast_forward(self, steps: int = 10000) -> list[Fill]:
+        """Executa até `steps` passos em modo headless (sem emitir cada barra no WebSocket)."""
+        saved = list(self.listeners)
+        self.listeners.clear()
+        fills: list[Fill] = []
+        try:
+            count = 0
+            while not self.clock.done and count < steps:
+                fills += self.step()
+                count += 1
+        finally:
+            self.listeners[:] = saved
         return fills
 
     def _arm_brackets(self) -> None:
@@ -245,6 +404,8 @@ class Session:
 
     def quotes(self) -> list[dict[str, Any]]:
         out = []
+        # ao vivo vale o relógio de parede (now só anda com ticks, e mercado fechado não tem tick)
+        ref = datetime.now(UTC) if isinstance(self.clock, LiveClock) else self.now
         for sym, inst in self.engine.account.instruments.items():
             hist = self.history.get(sym, [])
             last = self.engine.account.marks.get(sym) if sym in self.quote_book else (
@@ -261,6 +422,7 @@ class Session:
                     "ts": hist[-1].ts.isoformat() if hist else None,
                     "bid": str(self.quote_book[sym]["bid"]) if sym in self.quote_book else None,
                     "ask": str(self.quote_book[sym]["ask"]) if sym in self.quote_book else None,
+                    "market": market_status(sym, ref),
                 }
             )
         return out
@@ -298,6 +460,9 @@ class Session:
             },
             "realized": {str(s): str(v) for s, v in acc.realized.items()},
             "fees": {c: str(v) for c, v in acc.fees.items()},
+            "borrow_fees": {c: str(v) for c, v in acc.borrow_fees.items()},
             "positions": positions,
             "orders": [state_to_dict(st) for st in self.engine.orders.values()],
+            "algos": [a.to_dict() for a in self.algos.values()],
+            "corporate_actions": self.corporate_actions,
         }

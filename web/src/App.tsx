@@ -3,9 +3,10 @@ import { useCallback, useEffect, useReducer, useRef, useState, type KeyboardEven
 import { FUNCTIONS, parseCommand, type FnCode } from "./commands/parse";
 import { num, px, secName } from "./fmt";
 import {
-  activeTab, allTabs, closeActive, cycleTab, DEFAULT_LAYOUT, focusTab, openPanel,
+  activeTab, allTabs, closeActive, cycleTab, DEFAULT_LAYOUT, focusTab, openPanel, WORKSPACE_PRESETS,
 } from "./layout/model";
 import { CURRENT, LayoutStore } from "./layout/store";
+import { loadAlerts, saveAlerts } from "./panels/Journal";
 import { Panel } from "./panels/Panel";
 import { PanelsCtx, useMarket } from "./store";
 
@@ -94,6 +95,28 @@ export default function App() {
             t = { id: Date.now() + Math.random(), kind: "err", text: `REJECTED ${o.order.id}: ${o.reject_reason}` };
             beep(200);
           }
+        } else if (e.type === "bar" || e.type === "tick") {
+          const sym = e.type === "bar" ? e.bar.symbol : e.symbol;
+          const price = Number(e.type === "bar" ? e.bar.close : e.price);
+          if (Number.isFinite(price) && price > 0) {
+            const alerts = loadAlerts();
+            let dirty = false;
+            for (const a of alerts) {
+              if (a.triggeredAt || a.symbol !== sym) continue;
+              const hit = (a.condition === "ABOVE" && price >= a.price) || (a.condition === "BELOW" && price <= a.price);
+              if (hit) {
+                a.triggeredAt = new Date().toISOString().slice(11, 19);
+                dirty = true;
+                t = {
+                  id: Date.now() + Math.random(),
+                  kind: a.condition === "ABOVE" ? "buy" : "sell",
+                  text: `ALERT ${secName(sym)} ${a.condition} ${px(a.price)} (${a.note})`,
+                };
+                beep(a.condition === "ABOVE" ? 1040 : 440);
+              }
+            }
+            if (dirty) saveAlerts(alerts);
+          }
         }
         if (t) {
           const toast = t;
@@ -147,19 +170,28 @@ export default function App() {
         if (!p.arg || !LayoutStore.validName(p.arg)) return say("SAVE <name>: letters, digits, - or _ (up to 32).", true);
         store.save(p.arg, model.toJson());
         return say(`Layout "${p.arg}" saved`);
-      case "LOAD": {
+      case "LOAD":
+      case "WS": {
         if (!p.arg) return say("LOAD <name>. LAYOUTS lists the saved ones.", true);
         const json = store.load(p.arg);
-        if (!json) return say(`Layout "${p.arg}" does not exist or is corrupted.`, true);
-        try {
-          replaceModel(Model.fromJson(json));
-        } catch {
-          return say(`Layout "${p.arg}" is incompatible with this version.`, true);
+        if (json) {
+          try {
+            replaceModel(Model.fromJson(json));
+            return say(`Layout "${p.arg}" loaded`);
+          } catch {
+            return say(`Layout "${p.arg}" is incompatible with this version.`, true);
+          }
         }
-        return say(`Layout "${p.arg}" loaded`);
+        const presetKey = p.arg.trim().toUpperCase();
+        if (presetKey in WORKSPACE_PRESETS) {
+          const defaultSym = snapRef.current?.quotes[0]?.symbol;
+          replaceModel(Model.fromJson(WORKSPACE_PRESETS[presetKey](defaultSym)));
+          return say(`Layout "${presetKey}" loaded`);
+        }
+        return say(`Layout "${p.arg}" does not exist or is corrupted.`, true);
       }
       case "LAYOUTS":
-        return say(`Layouts: ${store.list().join(", ") || "(none saved)"}`);
+        return say(`Layouts: ${store.list().join(", ") || "(none saved)"} · Presets: ${Object.keys(WORKSPACE_PRESETS).join(", ")}`);
       case "RESET":
         replaceModel(Model.fromJson(DEFAULT_LAYOUT));
         return say("Default layout restored");
@@ -267,7 +299,7 @@ export default function App() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onBarKey}
-          placeholder="<security> <function> <GO>   e.g. PETR4 BZ Equity GP · BTCUSDT Crypto GP · MON · HELP"
+          placeholder="<security> <function> <GO>   e.g. PETR4 BZ Equity GP · AAPL OMON · EQS · CORR · MC · WS QUANT"
           spellCheck={false}
           autoComplete="off"
           aria-label="Command line"
@@ -300,4 +332,3 @@ export default function App() {
     </PanelsCtx.Provider>
   );
 }
-

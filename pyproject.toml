@@ -3,7 +3,7 @@ name = "market-holder"
 version = "0.0.1"
 description = "Simulador de mercado multi-ativo com interface estilo terminal"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["tzdata; sys_platform == 'win32'"]  # zoneinfo no Windows não traz a base de fusos
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "httpx"]

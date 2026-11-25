@@ -6,7 +6,7 @@ import { useMarket, useTick } from "../store";
 type Result = { order: { id: string }; status: string; reject_reason: string };
 
 export function Ord({ symbol }: { symbol?: string }) {
-  const { snapshot: s } = useMarket();
+  const { snapshot: s, refresh } = useMarket();
   const [sym, setSym] = useState(symbol ?? "");
   const [side, setSide] = useState<"BUY" | "SELL">("BUY");
   const [type, setType] = useState("MARKET");
@@ -14,6 +14,12 @@ export function Ord({ symbol }: { symbol?: string }) {
   const [limit, setLimit] = useState("");
   const [stop, setStop] = useState("");
   const [tif, setTif] = useState("DAY");
+  const [displayQty, setDisplayQty] = useState("");
+  const [bracketOn, setBracketOn] = useState(false);
+  const [bracketStop, setBracketStop] = useState("");
+  const [bracketTarget, setBracketTarget] = useState("");
+  const [riskPct, setRiskPct] = useState("1.0");
+  const [algoSlices, setAlgoSlices] = useState("5");
   const [msg, setMsg] = useState<{ t: string; err: boolean }>({ t: "", err: false });
   const tick = useTick(sym || undefined);
 
@@ -31,16 +37,42 @@ export function Ord({ symbol }: { symbol?: string }) {
   const pos = s.positions.find((p) => p.symbol === sym);
   const cfg = s.meta.symbols?.find((c) => c.symbol === sym);
   const lot = Number(cfg?.lot_size ?? 1) || 1;
+  const mult = Number(cfg?.multiplier ?? 1) || 1;
   const last = tick?.price ?? Number(quote?.last);
   const bid = tick?.bid ?? last;
   const ask = tick?.ask ?? last;
   const live = s.meta.mode === "live";
 
   const pct = (p: number) => {
-    // BUY: % of equity at the current price; SELL: % of the position
-    const raw = side === "BUY" ? (Number(s.equity) * p) / (last || 1) : Math.abs(Number(pos?.qty ?? 0)) * p;
+    // BUY: % of equity at the current price; SELL: % of the position (or equity if flat/shorting)
+    const posQty = Math.abs(Number(pos?.qty ?? 0));
+    const raw =
+      side === "BUY" || posQty === 0
+        ? (Number(s.equity) * p) / ((last || 1) * mult)
+        : posQty * p;
     setQty(String(Math.floor(raw / lot) * lot));
   };
+
+  const calcRiskSize = () => {
+    const entryPx = (type === "LIMIT" || type === "STOP_LIMIT") && Number(limit) > 0 ? Number(limit) : last;
+    const stopPx = Number(bracketStop || stop);
+    const rPct = (Number(riskPct) || 1) / 100;
+    if (!entryPx || !stopPx || Math.abs(entryPx - stopPx) <= 1e-9) {
+      setMsg({ t: "Enter a valid Stop price (or Bracket Stop) to size by risk %.", err: true });
+      return;
+    }
+    const maxLossBase = Number(s.equity) * rPct;
+    const riskPerUnit = Math.abs(entryPx - stopPx) * mult;
+    const rawQty = maxLossBase / riskPerUnit;
+    const sized = Math.max(lot, Math.floor(rawQty / lot) * lot);
+    setQty(String(sized));
+    setMsg({
+      t: `Risk Sizing: ${num(rPct * 100, 2)}% of Equity (${num(maxLossBase)} ${s.base_currency}) → Qty ${sized}`,
+      err: false,
+    });
+  };
+
+  const isAlgo = type === "TWAP" || type === "VWAP";
   const needLimit = type === "LIMIT" || type === "STOP_LIMIT";
   const needStop = type === "STOP" || type === "STOP_LIMIT";
 
@@ -53,12 +85,56 @@ export function Ord({ symbol }: { symbol?: string }) {
       setMsg({ t: String(e), err: true });
     }
   };
-  const send = () =>
-    submit({
-      symbol: sym, side, type, qty, tif,
+
+  const send = async () => {
+    if (isAlgo) {
+      try {
+        const res = await api<{ id: string; algo: string; slices: number; total_qty: string }>("POST", "/api/orders/algo", {
+          symbol: sym,
+          side,
+          algo: type,
+          qty,
+          slices: Number(algoSlices) || 5,
+        });
+        setMsg({ t: `Algo ${res.id} (${res.algo}) scheduled: ${res.total_qty} across ${res.slices} slices`, err: false });
+        void refresh();
+      } catch (e) {
+        setMsg({ t: String(e), err: true });
+      }
+      return;
+    }
+    if (bracketOn && (type === "MARKET" || type === "LIMIT")) {
+      try {
+        const r = await api<Result>("POST", "/api/orders/bracket", {
+          symbol: sym,
+          side,
+          qty,
+          type,
+          limit_price: type === "LIMIT" ? limit : undefined,
+          stop_price: bracketStop,
+          target_price: bracketTarget,
+          tif,
+        });
+        const bad = r.status === "REJECTED";
+        setMsg({ t: bad ? `Rejected: ${r.reject_reason}` : `Bracket Order ${r.order.id} ${r.status} (OCO exits armed)`, err: bad });
+        void refresh();
+      } catch (e) {
+        setMsg({ t: String(e), err: true });
+      }
+      return;
+    }
+    await submit({
+      symbol: sym,
+      side,
+      type,
+      qty,
+      tif,
       limit_price: needLimit ? limit : undefined,
       stop_price: needStop ? stop : undefined,
+      display_qty: displayQty.trim() ? displayQty.trim() : undefined,
     });
+  };
+
   const oneClick = (sd: "BUY" | "SELL") => submit({ symbol: sym, side: sd, type: "MARKET", qty, tif });
 
   return (
@@ -96,27 +172,60 @@ export function Ord({ symbol }: { symbol?: string }) {
         <button aria-pressed={side === "SELL"} className={side === "SELL" ? "on sell" : ""} onClick={() => setSide("SELL")}>SELL</button>
         <label>Type
           <select aria-label="Type" value={type} onChange={(e) => setType(e.target.value)}>
-            {["MARKET", "LIMIT", "STOP", "STOP_LIMIT"].map((t) => <option key={t}>{t}</option>)}
+            {["MARKET", "LIMIT", "STOP", "STOP_LIMIT", "TWAP", "VWAP"].map((t) => <option key={t}>{t}</option>)}
           </select>
         </label>
-        <label>TIF
-          <select aria-label="TIF" value={tif} onChange={(e) => setTif(e.target.value)}>
-            {["DAY", "GTC", "IOC", "FOK"].map((t) => <option key={t}>{t}</option>)}
-          </select>
-        </label>
+        {!isAlgo && (
+          <label>TIF
+            <select aria-label="TIF" value={tif} onChange={(e) => setTif(e.target.value)}>
+              {["DAY", "GTC", "IOC", "FOK"].map((t) => <option key={t}>{t}</option>)}
+            </select>
+          </label>
+        )}
+        {isAlgo && (
+          <label>Algo Slices (Bars)
+            <input aria-label="Algo Slices" value={algoSlices} onChange={(e) => setAlgoSlices(e.target.value)} size={4} />
+          </label>
+        )}
       </div>
       <div className="row">
         <label>Quantity<input aria-label="Quantity" value={qty} onChange={(e) => setQty(e.target.value)} size={10} /></label>
         {[0.1, 0.25, 0.5, 1].map((p) => <button key={p} onClick={() => pct(p)}>{p * 100}%</button>)}
         {needLimit && <label>Limit<input aria-label="Limit price" value={limit} onChange={(e) => setLimit(e.target.value)} size={10} /></label>}
         {needStop && <label>Stop<input aria-label="Stop price" value={stop} onChange={(e) => setStop(e.target.value)} size={10} /></label>}
+        {!isAlgo && (
+          <label title="Iceberg order visible slice per bar (optional)">Iceberg Max/Bar
+            <input aria-label="Iceberg display qty" value={displayQty} placeholder="full" onChange={(e) => setDisplayQty(e.target.value)} size={7} />
+          </label>
+        )}
       </div>
+
+      {!isAlgo && (
+        <div className="block">
+          <div className="row">
+            <button className={bracketOn ? "on buy" : ""} onClick={() => setBracketOn(!bracketOn)}>
+              {bracketOn ? "✓ Bracket OCO Active" : "+ Attach Bracket (Stop & Target)"}
+            </button>
+            <label>Stop-Loss Px
+              <input aria-label="Bracket Stop" value={bracketStop} onChange={(e) => setBracketStop(e.target.value)} placeholder={px(last * (side === "BUY" ? 0.98 : 1.02))} size={9} />
+            </label>
+            <label>Take-Profit Px
+              <input aria-label="Bracket Target" value={bracketTarget} onChange={(e) => setBracketTarget(e.target.value)} placeholder={px(last * (side === "BUY" ? 1.04 : 0.96))} size={9} />
+            </label>
+            <label>Risk % Equity
+              <input aria-label="Risk Pct" value={riskPct} onChange={(e) => setRiskPct(e.target.value)} size={5} />
+            </label>
+            <button onClick={calcRiskSize} title="Calculate position size from Equity * Risk% / |Entry - Stop|">Size by Risk</button>
+          </div>
+        </div>
+      )}
+
       <div className="row">
         <button className="send" onClick={send} disabled={!sym || !qty}>SEND {side}</button>
       </div>
       {msg.t && <div className={msg.err ? "err" : "ok"} role="status">{msg.t}</div>}
       <div className="dim">
-        BUY: % of equity at the current price. SELL: % of the position.{" "}
+        BUY: % of equity at the current price. SELL: % of the position (or equity when opening a short).{" "}
         {live ? "Live: market orders fill on the next real-time quote (~1 s)." : "Replay: the order enters from the next bar (no lookahead)."}
       </div>
     </div>

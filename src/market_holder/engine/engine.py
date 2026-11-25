@@ -20,6 +20,7 @@ from market_holder.domain.models import (
     Order,
     OrderStatus,
     OrderType,
+    Side,
     Tick,
     TimeInForce,
 )
@@ -71,6 +72,8 @@ class Engine:
         self.session_of = session_of
         self.orders: dict[str, OrderState] = {}
         self.fills: list[Fill] = []
+        self._last_session: Any = None
+        self._liq_seq: int = 0
 
     # --- ordens ---
 
@@ -103,6 +106,8 @@ class Engine:
             return "IOC/FOK only for MARKET and LIMIT"
         if order.qty % inst.lot_size != 0:
             return "qty not multiple of lot size"
+        if order.display_qty is not None and order.display_qty % inst.lot_size != 0:
+            return "display_qty not multiple of lot size"
         for price in (order.limit_price, order.stop_price):
             if price is not None and price % inst.tick_size != 0:
                 return "price not on tick size"
@@ -131,6 +136,9 @@ class Engine:
             budget = c.volume * self.model.max_participation
         fills: list[Fill] = []
         session = self.session_of(c.ts)
+        if self._last_session is not None and session != self._last_session:
+            self.account.charge_borrow_fee(1)
+        self._last_session = session
         done_oco: set[str] = set()
 
         # OCO: se stop e alvo do mesmo grupo cabem na mesma barra, o stop vem primeiro (pior caso
@@ -155,6 +163,8 @@ class Engine:
                 continue
 
             qty = st.leaves_qty
+            if o.display_qty is not None:
+                qty = min(qty, o.display_qty)
             if budget is not None:
                 lots = (budget / inst.lot_size).to_integral_value(ROUND_FLOOR)
                 qty = min(qty, lots * inst.lot_size)
@@ -190,4 +200,54 @@ class Engine:
                         other.status = OrderStatus.CANCELED
 
         self.account.marks[symbol] = c.close
+        if self.account.policy.auto_liquidate and self.account.margin_status().margin_call:
+            fills += self._auto_liquidate(c.ts)
         return fills
+
+    def _auto_liquidate(self, ts: datetime) -> list[Fill]:
+        """Liquida posições abertas a preço de marcação quando equity < maintenance_required."""
+        liq_fills: list[Fill] = []
+        # Cancela ordens ativas que poderiam aumentar exposição durante margin call
+        for st in self.orders.values():
+            if st.status.active:
+                st.status = OrderStatus.CANCELED
+        positions = [
+            (s, p)
+            for s, p in self.account.portfolio.positions.items()
+            if p.qty != 0
+        ]
+        # Liquida primeiro a maior exposição bruta
+        positions.sort(
+            key=lambda sp: abs(
+                self.account._position_value_base(sp[0], sp[1].qty, self.account.mark(sp[0]))
+            ),
+            reverse=True,
+        )
+        for sym, pos in positions:
+            if not self.account.margin_status().margin_call:
+                break
+            if pos.qty == 0:
+                continue
+            inst = self.account.instruments[sym]
+            price = self.account.mark(sym)
+            side = Side.SELL if pos.qty > 0 else Side.BUY
+            qty = abs(pos.qty)
+            notional = qty * price * inst.multiplier
+            fee = self.fees.fee(notional, first_fill=True)
+            self._liq_seq += 1
+            oid = f"LIQ{self._liq_seq}"
+            order = Order(oid, sym, side, OrderType.MARKET, qty, ts)
+            st = OrderState(
+                order,
+                self.session_of(ts),
+                status=OrderStatus.FILLED,
+                filled_qty=qty,
+                avg_price=price,
+                reject_reason="MARGIN_CALL_LIQUIDATION",
+            )
+            self.orders[oid] = st
+            fill = Fill(oid, sym, side, qty, price, ts, fee)
+            self.account.apply_fill(fill)
+            self.fills.append(fill)
+            liq_fills.append(fill)
+        return liq_fills

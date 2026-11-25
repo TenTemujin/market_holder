@@ -23,6 +23,56 @@ export const DEFAULT_LAYOUT: IJsonModel = {
   },
 };
 
+export const WORKSPACE_PRESETS: Record<string, (defaultSym?: string) => IJsonModel> = {
+  SCALP: (sym = "CRYPTO:BINANCE:BTCUSDT") => ({
+    global: {},
+    layout: {
+      type: "row",
+      children: [
+        { type: "tabset", weight: 55, children: [tabJson("GP", sym), tabJson("MON")] },
+        {
+          type: "row",
+          weight: 45,
+          children: [
+            { type: "tabset", weight: 50, children: [tabJson("BOOK", sym), tabJson("ORD", sym)] },
+            { type: "tabset", weight: 50, children: [tabJson("PORT"), tabJson("ALRT")] },
+          ],
+        },
+      ],
+    },
+  }),
+  MACRO: (sym = "INDEX:US:GSPC") => ({
+    global: {},
+    layout: {
+      type: "row",
+      children: [
+        { type: "tabset", weight: 50, children: [tabJson("CURVE"), tabJson("ECO"), tabJson("FX")] },
+        { type: "tabset", weight: 50, children: [tabJson("GP", sym), tabJson("MON"), tabJson("PORT")] },
+      ],
+    },
+  }),
+  QUANT: (sym = "EQ:US:AAPL") => ({
+    global: {},
+    layout: {
+      type: "row",
+      children: [
+        { type: "tabset", weight: 52, children: [tabJson("EQS"), tabJson("CORR"), tabJson("MC")] },
+        { type: "tabset", weight: 48, children: [tabJson("GP", sym), tabJson("PORT"), tabJson("JRNL")] },
+      ],
+    },
+  }),
+  OPTIONS: (sym = "EQ:US:AAPL") => ({
+    global: {},
+    layout: {
+      type: "row",
+      children: [
+        { type: "tabset", weight: 58, children: [tabJson("OMON", sym), tabJson("GP", sym)] },
+        { type: "tabset", weight: 42, children: [tabJson("ORD", sym), tabJson("PORT")] },
+      ],
+    },
+  }),
+};
+
 export function allTabs(model: Model): TabNode[] {
   const tabs: TabNode[] = [];
   model.visitNodes((node) => {

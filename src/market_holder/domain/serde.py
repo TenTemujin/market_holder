@@ -57,6 +57,7 @@ def order_to_dict(o: Order) -> dict[str, Any]:
         "stop_price": None if o.stop_price is None else str(o.stop_price),
         "tif": o.tif.value,
         "oco": o.oco,
+        "display_qty": None if o.display_qty is None else str(o.display_qty),
     }
 
 
@@ -75,6 +76,7 @@ def order_from_dict(d: dict[str, Any]) -> Order:
         stop_price=dec(d["stop_price"]),
         tif=TimeInForce(d["tif"]),
         oco=d.get("oco"),
+        display_qty=dec(d.get("display_qty")),
     )
 
 

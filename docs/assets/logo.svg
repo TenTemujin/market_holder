@@ -1,19 +1,57 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="720" height="180" viewBox="0 0 720 180" role="img" aria-label="Market Holder">
-  <rect width="720" height="180" rx="20" fill="#000"/>
-  <rect x="1.5" y="1.5" width="717" height="177" rx="19" fill="none" stroke="#5a3a10" stroke-width="3"/>
-  <g transform="translate(30 24)">
-    <rect width="132" height="132" rx="18" fill="#0b0b0b" stroke="#ffa028" stroke-width="3"/>
-    <g stroke-width="4" stroke-linecap="round">
-      <line x1="34" y1="30" x2="34" y2="104" stroke="#00d26a"/>
-      <rect x="25" y="52" width="18" height="38" rx="2" fill="#00d26a" stroke="none"/>
-      <line x1="66" y1="22" x2="66" y2="88" stroke="#ff3b3b"/>
-      <rect x="57" y="34" width="18" height="40" rx="2" fill="#ff3b3b" stroke="none"/>
-      <line x1="98" y1="16" x2="98" y2="80" stroke="#00d26a"/>
-      <rect x="89" y="26" width="18" height="38" rx="2" fill="#00d26a" stroke="none"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="156" viewBox="0 0 760 156" role="img" aria-label="Market Holder Terminal">
+  <rect width="760" height="156" fill="#050505"/>
+  <!-- Outer precision terminal frame -->
+  <rect x="1" y="1" width="758" height="154" fill="none" stroke="#3a250a" stroke-width="2"/>
+  <rect x="5" y="5" width="750" height="22" fill="#140e04"/>
+  <line x1="5" y1="27" x2="755" y2="27" stroke="#5a3a10" stroke-width="1"/>
+
+  <!-- Top command header bar -->
+  <text x="14" y="20" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace" font-size="11" font-weight="700" fill="#ffa028">MH // MULTI-ASSET EXECUTION &amp; REPLAY WORKSTATION</text>
+  <rect x="652" y="8" width="38" height="15" fill="#1fae4b"/>
+  <text x="658" y="19" font-family="'Cascadia Mono', Consolas, monospace" font-size="10" font-weight="700" fill="#000">&lt;GO&gt;</text>
+  <text x="698" y="19" font-family="'Cascadia Mono', Consolas, monospace" font-size="10" fill="#8a8a8a">UTC</text>
+
+  <!-- Left micro-panel: yield curve + order book depth bars -->
+  <g transform="translate(16 38)">
+    <rect width="128" height="102" fill="#0a0a0a" stroke="#2a2a2a" stroke-width="1"/>
+    <line x1="0" y1="26" x2="128" y2="26" stroke="#181818" stroke-width="1"/>
+    <line x1="0" y1="52" x2="128" y2="52" stroke="#181818" stroke-width="1"/>
+    <line x1="0" y1="78" x2="128" y2="78" stroke="#181818" stroke-width="1"/>
+    <line x1="32" y1="0" x2="32" y2="102" stroke="#181818" stroke-width="1"/>
+    <line x1="64" y1="0" x2="64" y2="102" stroke="#181818" stroke-width="1"/>
+    <line x1="96" y1="0" x2="96" y2="102" stroke="#181818" stroke-width="1"/>
+
+    <!-- VPVR / Depth profile on right edge of micro-panel -->
+    <rect x="104" y="12" width="23" height="6" fill="#ff3b3b" fill-opacity="0.35"/>
+    <rect x="92" y="22" width="35" height="6" fill="#ff3b3b" fill-opacity="0.35"/>
+    <rect x="78" y="46" width="49" height="6" fill="#ffa028" fill-opacity="0.55"/>
+    <rect x="96" y="68" width="31" height="6" fill="#00d26a" fill-opacity="0.35"/>
+    <rect x="86" y="80" width="41" height="6" fill="#00d26a" fill-opacity="0.35"/>
+
+    <!-- Candlesticks -->
+    <g stroke-width="1.5">
+      <line x1="18" y1="56" x2="18" y2="88" stroke="#ff3b3b"/>
+      <rect x="14" y="64" width="8" height="16" fill="#ff3b3b"/>
+
+      <line x1="38" y1="42" x2="38" y2="78" stroke="#00d26a"/>
+      <rect x="34" y="48" width="8" height="22" fill="#00d26a"/>
+
+      <line x1="58" y1="36" x2="58" y2="68" stroke="#00d26a"/>
+      <rect x="54" y="42" width="8" height="18" fill="#00d26a"/>
+
+      <line x1="78" y1="44" x2="78" y2="72" stroke="#ff3b3b"/>
+      <rect x="74" y="48" width="8" height="14" fill="#ff3b3b"/>
+
+      <line x1="98" y1="16" x2="98" y2="54" stroke="#00d26a"/>
+      <rect x="94" y="22" width="8" height="26" fill="#00d26a"/>
     </g>
-    <polyline points="12,100 40,84 66,92 120,38" fill="none" stroke="#ffa028" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
-    <circle cx="120" cy="38" r="6" fill="#ffd400"/>
+
+    <!-- VWAP / Term Structure line -->
+    <polyline points="10,76 38,62 58,52 78,56 112,26" fill="none" stroke="#ffd400" stroke-width="1.8" stroke-dasharray="3,2"/>
   </g>
-  <text x="196" y="94" font-family="Consolas, 'Courier New', monospace" font-size="52" font-weight="700" fill="#ffa028" letter-spacing="2">MARKET HOLDER</text>
-  <text x="198" y="130" font-family="Consolas, 'Courier New', monospace" font-size="19" fill="#8a8a8a" letter-spacing="1">multi-asset market simulator · terminal-style UI</text>
+
+  <!-- Main typography & telemetry block -->
+  <text x="164" y="82" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace" font-size="44" font-weight="700" fill="#ffa028" letter-spacing="1.5">MARKET HOLDER</text>
+  <text x="166" y="106" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace" font-size="14" fill="#ececec" letter-spacing="0.5">DETERMINISTIC REPLAY &amp; LIVE MULTI-ASSET PAPER TRADING</text>
+  <text x="166" y="128" font-family="'Cascadia Mono', Consolas, 'Courier New', monospace" font-size="11.5" fill="#8a8a8a">EQUITIES · FX · SOVEREIGN RATES · CRYPTO · BLACK-SCHOLES OPTIONS · RISK ENGINE</text>
 </svg>

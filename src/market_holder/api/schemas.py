@@ -24,6 +24,8 @@ class SymbolCfg(BaseModel):
     tick_size: Decimal = Decimal("0.01")
     lot_size: Decimal = Decimal(1)
     multiplier: Decimal = Decimal(1)
+    borrow_rate_annual: Decimal = Decimal(0)
+    locate_limit: Decimal | None = None
 
 
 class ModelCfg(BaseModel):
@@ -42,6 +44,7 @@ class MarginCfg(BaseModel):
     initial_rate: Decimal = Decimal("0.5")
     maintenance_rate: Decimal = Decimal("0.25")
     allow_short: bool = True
+    auto_liquidate: bool = False
 
 
 class SessionReq(BaseModel):
@@ -67,6 +70,36 @@ class OrderReq(BaseModel):
     stop_price: Decimal | None = None
     tif: TimeInForce = TimeInForce.DAY
     oco: str | None = None
+    display_qty: Decimal | None = None
+
+
+class ModifyOrderReq(BaseModel):
+    limit_price: Decimal | None = None
+    stop_price: Decimal | None = None
+
+
+class AlgoOrderReq(BaseModel):
+    symbol: str
+    side: Side
+    algo: Literal["TWAP", "VWAP"] = "TWAP"
+    qty: Decimal
+    slices: int = 5
+
+
+class OptionOrderReq(BaseModel):
+    underlying: str
+    right: Literal["CALL", "PUT"]
+    strike: Decimal
+    expiry_days: int = 30
+    side: Side
+    qty: Decimal
+    price: Decimal
+
+
+class CorporateActionReq(BaseModel):
+    symbol: str
+    kind: Literal["SPLIT", "DIVIDEND"]
+    value: Decimal
 
 
 class BracketReq(BaseModel):
@@ -87,6 +120,7 @@ class ExitsReq(BaseModel):
 
 
 class ClockReq(BaseModel):
-    action: Literal["play", "pause", "step", "speed", "until"]
+    action: Literal["play", "pause", "step", "speed", "until", "fast_forward"]
     speed: float | None = None
     until: UtcDatetime | None = None
+    steps: int = 10000

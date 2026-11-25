@@ -43,10 +43,23 @@ describe("parseCommand", () => {
     expect(r.kind === "error" && r.message).toContain("AAPL US Equity GP");
   });
 
-  it("comandos de layout", () => {
+  it("comandos de layout e workspaces", () => {
     expect(parseCommand("save meu layout")).toEqual({ kind: "shell", cmd: "SAVE", arg: "meu layout" });
     expect(parseCommand("LAYOUTS")).toEqual({ kind: "shell", cmd: "LAYOUTS", arg: undefined });
     expect(parseCommand("load")).toEqual({ kind: "shell", cmd: "LOAD", arg: undefined });
+    expect(parseCommand("WS QUANT")).toEqual({ kind: "shell", cmd: "WS", arg: "QUANT" });
+  });
+
+  it("novas funções quantitativas, opções e diário (OMON, EQS, CORR, MC, JRNL, ALRT)", () => {
+    expect(parseCommand("OMON")).toEqual({ kind: "panel", fn: "OMON" });
+    expect(parseCommand("AAPL US Equity OMON")).toEqual({ kind: "panel", fn: "OMON", symbol: "EQ:US:AAPL" });
+    expect(parseCommand("CHAIN AAPL")).toEqual({ kind: "panel", fn: "OMON", symbol: "EQ:US:AAPL" });
+    expect(parseCommand("EQS")).toEqual({ kind: "panel", fn: "EQS" });
+    expect(parseCommand("SCAN")).toEqual({ kind: "panel", fn: "EQS" });
+    expect(parseCommand("CORR")).toEqual({ kind: "panel", fn: "CORR" });
+    expect(parseCommand("MC")).toEqual({ kind: "panel", fn: "MC" });
+    expect(parseCommand("JRNL")).toEqual({ kind: "panel", fn: "JRNL" });
+    expect(parseCommand("ALRT")).toEqual({ kind: "panel", fn: "ALRT" });
   });
 
   it.each(["", "   ", "AAPL XYZ", "A B GP", "EQ::X GP"])("erro em %j", (input) => {

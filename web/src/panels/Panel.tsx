@@ -3,10 +3,13 @@ import { num, px, secName, sign, utc } from "../fmt";
 import { useBars, useMarket, useTick } from "../store";
 import { Book } from "./Book";
 import { Gp } from "./Gp";
-import { Curve, Eco } from "./Macro";
+import { Alrt, Jrnl } from "./Journal";
+import { Curve, Eco, FxPanel } from "./Macro";
 import { Mon } from "./Mon";
+import { Omon } from "./Omon";
 import { Ord } from "./Ord";
 import { Port } from "./Port";
+import { Corr, Eqs, Mc } from "./Quant";
 import { Replay } from "./Replay";
 import { fmtChg } from "./util";
 
@@ -82,11 +85,17 @@ function Body({ fn, symbol }: { fn: FnCode; symbol?: string }) {
   switch (fn) {
     case "REPLAY": return <Replay />;
     case "MON": return <Mon />;
+    case "EQS": return <Eqs />;
     case "PORT": return <Port />;
+    case "CORR": return <Corr />;
+    case "MC": return <Mc />;
+    case "JRNL": return <Jrnl />;
+    case "ALRT": return <Alrt />;
     case "ORD": return <Ord symbol={symbol} />;
+    case "OMON": return <Omon symbol={symbol} />;
     case "CURVE": return <Curve />;
     case "ECO": return <Eco />;
-    case "FX": return <Eco initial="FX:BCB:USDBRL" />;
+    case "FX": return <FxPanel />;
     case "HELP": return <Help />;
     case "GP": return symbol ? <Gp symbol={symbol} /> : null;
     case "HP": return symbol ? <Hp symbol={symbol} /> : null;

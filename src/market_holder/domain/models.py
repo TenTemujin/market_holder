@@ -74,10 +74,16 @@ class Instrument:
     tick_size: Decimal = Decimal("0.01")
     lot_size: Decimal = Decimal(1)
     multiplier: Decimal = Decimal(1)  # tamanho do contrato (futuros, opções)
+    borrow_rate_annual: Decimal = Decimal(0)  # taxa anual de aluguel para short (ex.: 0.03)
+    locate_limit: Decimal | None = None  # estoque máximo disponível para short (None = ilimitado)
 
     def __post_init__(self) -> None:
         if self.tick_size <= 0 or self.lot_size <= 0 or self.multiplier <= 0:
             raise ValueError("tick_size, lot_size e multiplier devem ser positivos")
+        if self.borrow_rate_annual < 0:
+            raise ValueError("borrow_rate_annual não pode ser negativa")
+        if self.locate_limit is not None and self.locate_limit < 0:
+            raise ValueError("locate_limit não pode ser negativo")
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,11 +133,14 @@ class Order:
     stop_price: Decimal | None = None
     tif: TimeInForce = TimeInForce.DAY
     oco: str | None = None  # grupo OCO: quando uma ordem do grupo executa, as outras são canceladas
+    display_qty: Decimal | None = None  # lote aparente (Iceberg): limita execução por barra
 
     def __post_init__(self) -> None:
         _require_utc(self.ts, "Order.ts")
         if self.qty <= 0:
             raise ValueError("qty deve ser positiva")
+        if self.display_qty is not None and (self.display_qty <= 0 or self.display_qty > self.qty):
+            raise ValueError("display_qty deve estar entre 0 (exclusivo) e qty")
         needs_limit = self.type in (OrderType.LIMIT, OrderType.STOP_LIMIT)
         needs_stop = self.type in (OrderType.STOP, OrderType.STOP_LIMIT)
         if needs_limit != (self.limit_price is not None):

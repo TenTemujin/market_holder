@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { num, px, sign, utc } from "./fmt";
+import { isBlindMode, num, px, secName, setBlindMode, sign, utc } from "./fmt";
 import { fmtChg } from "./panels/util";
 
 describe("fmt", () => {
@@ -23,5 +23,15 @@ describe("fmt", () => {
   it("fmtChg calcula variação e percentual; prev 0 não divide", () => {
     expect(fmtChg("110", "100")).toEqual({ chg: 10, pct: 10 });
     expect(fmtChg("5", "0")).toEqual({ chg: 5, pct: 0 });
+  });
+  it("blind mode mascara símbolos e datas e restaura ao desligar", () => {
+    setBlindMode(true);
+    expect(isBlindMode()).toBe(true);
+    expect(secName("EQ:US:AAPL")).toBe("BLIND-A MYST Asset");
+    expect(secName("EQ:B3:PETR4")).toBe("BLIND-B MYST Asset");
+    expect(utc("2026-11-17T14:00:00+00:00")).toMatch(/^DAY-\d{3} 14:00$/);
+    setBlindMode(false);
+    expect(isBlindMode()).toBe(false);
+    expect(secName("EQ:US:AAPL")).toBe("AAPL US Equity");
   });
 });
