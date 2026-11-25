@@ -22,3 +22,6 @@ docs/planning/
 web/*.png
 .env
 *.log
+
+# logs do dev.cmd
+.run/

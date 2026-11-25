@@ -216,11 +216,19 @@ def create_app(
                 )
             except ValueError as e:
                 raise HTTPException(422, str(e)) from e
-            got = await load_bars(sym, start, end, req.freq)
+
+        sem = asyncio.Semaphore(8)  # limita threads: o limitador do Yahoo dorme dentro de um lock
+
+        async def fetch(sym: Symbol) -> list[Bar]:
+            async with sem:
+                got = await load_bars(sym, start, end, req.freq)
             if live:  # só barras fechadas servem de contexto
                 got = [b for b in got if b.ts + period <= now]
             if not got:
                 raise HTTPException(422, f"sem dados para {sym} no período")
+            return got
+
+        for got in await asyncio.gather(*(fetch(s) for s in instruments)):
             bars += got
         account = Account(
             req.base_currency,

@@ -1,11 +1,26 @@
 // Thin client for the backend API. Decimals and dates arrive as strings.
 
+const OFFLINE = "Cannot reach the API. Start it with dev.cmd (Windows) or ./dev.sh, then try again.";
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export async function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(path, {
-    method,
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  // Reads are idempotent: retry through a brief API restart. Writes are never retried.
+  const tries = method === "GET" ? 3 : 1;
+  let res: Response | undefined;
+  for (let i = 0; i < tries; i++) {
+    try {
+      res = await fetch(path, {
+        method,
+        headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      if (![502, 503, 504].includes(res.status)) break; // proxy answers these while the API is down
+    } catch {
+      res = undefined; // network error: server unreachable
+    }
+    if (i < tries - 1) await sleep(400 * (i + 1));
+  }
+  if (!res || [502, 503, 504].includes(res.status)) throw new Error(OFFLINE);
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -16,7 +31,12 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
     }
     throw new Error(`${res.status}: ${detail}`);
   }
-  return (await res.json()) as T;
+  try {
+    return (await res.json()) as T;
+  } catch {
+    // HTML instead of JSON = the dev server is not proxying /api to the API
+    throw new Error("The server answered with something that is not the API. Restart with dev.cmd / ./dev.sh.");
+  }
 }
 
 export interface Bar { symbol: string; ts: string; freq: string; open: string; high: string; low: string; close: string; volume: string }

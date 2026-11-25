@@ -50,6 +50,10 @@ It is built for practicing discretionary and systematic execution across equitie
 
 Requirements: **Python 3.12+** and **Node.js 20+**.
 
+After the one-time install below, start everything with a single command (Windows: `dev.cmd`; Linux/macOS: `./dev.sh`; any OS: `python scripts/dev.py`). It starts the API, waits for `/api/health` to answer JSON, starts the web server, checks that the API is also reachable through the web proxy, and only then opens the browser. Ctrl+C stops both; logs go to `.run/`. It aborts with a clear message if port 8000 or 5173 is already taken.
+
+Manual setup and start:
+
 ```bash
 # 1. Backend API (port 8000)
 python -m venv .venv
